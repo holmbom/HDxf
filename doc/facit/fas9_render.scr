@@ -1,0 +1,58 @@
+; fas9_render.scr - facit for step 9.11 (LIGHT, light colors and the light list; F9.13, F9.14). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_render.scr
+; (AutoCAD 2025's core on acad.dwt). Plain AutoCAD commands, no LISP; see fas9_example.scr.
+;
+; What the core can make: the LIGHT command (point, free spot, distant light) with a name, intensity, hotspot and falloff, shadows,
+; status and filter color (index and true color). The 2000 file has the color as one group 90 (an AcCmEntityColor: 0xC2 and the true
+; color's three bytes, or 0xC3 and the index), 2004 and later 63 with 421.
+;
+; What the core cannot make: its render system variables (RENDERTARGET, RENDERLEVEL, RENDERTIME, IBLENVIRONMENT ...) change the current
+; preset but the core creates no RAPIDRTRENDERSETTINGS or RAPIDRTRENDERENVIRONMENT object from them (tried: none in the 2018 file);
+; there is no command for RENDERSETTINGS, MENTALRAYRENDERSETTINGS, RENDERENVIRONMENT, RENDERGLOBAL, RENDERENTRY or the light list
+; ("Unknown command": -RENDERPRESETS, RENDERPRESETS, RENDERENVIRONMENT, -RENDERENVIRONMENT, -POINTLIGHT, LIGHTLIST), and AutoCAD 2025 writes no
+; LIGHTLIST for its lights. The RAPIDRT and MENTALRAY objects of F9.13 are the corpus's (doc/facit/*_render_modeldoc.dxf and *_modeldoc_views.dxf,
+; made in the GUI by 18_render_modeldoc.scr and 24_rapidrt_preset.scr); the rest is ej testat (plan 9.11).
+_.LIGHT
+_P
+30,30,80
+_N
+HDXF_POINT
+_I
+1.5
+_C
+255,128,0
+_X
+_.LIGHT
+_F
+100,20,90
+_N
+HDXF_SPOT
+_H
+30
+_F
+40
+_W
+_F
+512
+4
+_C
+_I
+1
+_X
+_.LIGHT
+_D
+0,0,100
+50,50,0
+_N
+HDXF_DISTANT
+_S
+_OFF
+_W
+_O
+_X
+;EXPECT LIGHT
+;SAVE lights
+_.ERASE
+_L
+
+;SAVE lights light_erased

@@ -1,0 +1,3 @@
+; Chained from a resource-dependent script whose external file is missing: ends that script cleanly.
+(setvar "FILEDIA" 1)
+(setvar "CMDDIA" 1)

@@ -1,0 +1,144 @@
+; fas9_table_layout.scr - step 9.5 (table layout, *T block, proxy graphics, extents), F9.5. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_table_layout.scr --input doc/facit/acad_2018_dxf_tables.dxf
+; on AutoCAD 2025's core (plain commands, no LISP). The input is the table Erik made in AutoCAD's GUI with
+; doc/facit/12_tables.scr (text in all three row types, a formula, merged cells with a fill, borders of other weights,
+; a field, a block cell with auto-fit, a cell with two contents); the core has no cell editor (TABLEDIT picks a cell and
+; ends, no -TABLESTYLE), so the layout branches the GUI file does not show are made by the commands the core has, each
+; one change from the input (the drawing is taken back with U after each):
+;
+;   moved, rotated 30 degrees and 90 degrees   the proxy graphics' transform and the table's horizontal direction (11)
+;   mirrored                                    what AutoCAD does to a table (the cells' text is not mirrored)
+;   scaled 2 and 0.5                            the table's sizes and text heights, margins and the *T block
+;   color, lineweight, layer of the table       what ByBlock and ByLayer are in the *T block and its proxy graphics
+;   a text style with another font              the table's text laid out in another font (a regeneration recomputes
+;                                               the table)
+;
+; What it cannot make is "ej testat" in doc/plans/2026-10-27-fas-9-typer.md (Utfall 9.5) and doc/facit/fas9_notes/F9.5.md:
+; text rotation and fonts of single cells, an edited merge, borders and fills of a cell, the blocks' auto-fit after a
+; cell change, a table style of other margins or row types (the core has no cell editor and no table style command).
+;
+; The table is picked by a window around it (the field's line and the MTEXT of 12_tables.scr are outside it).
+;EXPECT ACAD_TABLE
+;SAVE table_layout
+_.UNDO
+_M
+_.MOVE
+_W
+-1,5
+141,81
+
+0,0
+25,-10
+;SAVE table_layout moved
+_.UNDO
+_B
+_.ROTATE
+_W
+-1,5
+141,81
+
+0,80
+30
+;SAVE table_layout rotated30
+_.UNDO
+_B
+_.ROTATE
+_W
+-1,5
+141,81
+
+0,80
+90
+;SAVE table_layout rotated90
+_.UNDO
+_B
+_.MIRROR
+_W
+-1,5
+141,81
+
+0,0
+100,0
+_N
+;SAVE table_layout mirrored
+_.UNDO
+_B
+_.MIRROR
+_W
+-1,5
+141,81
+
+0,0
+0,100
+_N
+;SAVE table_layout mirrored_vertical
+_.UNDO
+_B
+_.SCALE
+_W
+-1,5
+141,81
+
+0,80
+2
+;SAVE table_layout scaled2
+_.UNDO
+_B
+_.SCALE
+_W
+-1,5
+141,81
+
+0,80
+0.5
+;SAVE table_layout scaled_half
+_.UNDO
+_B
+_.CHPROP
+_W
+-1,5
+141,81
+
+_C
+1
+
+;SAVE table_layout color_red
+_.UNDO
+_B
+_.CHPROP
+_W
+-1,5
+141,81
+
+_LW
+0.5
+
+;SAVE table_layout lineweight
+_.UNDO
+_B
+_.-LAYER
+_N
+HDXF_TABLES
+
+_.CHPROP
+_W
+-1,5
+141,81
+
+_LA
+HDXF_TABLES
+
+;SAVE table_layout layer
+_.UNDO
+_B
+_.-STYLE
+Standard
+romans
+0
+1
+0
+N
+N
+N
+_.REGENALL
+;SAVE table_layout font_romans

@@ -1,0 +1,17 @@
+; Run in a NEW EMPTY acad.dwt drawing. AutoCAD 2025, SCRIPT this file.
+; NWCOUT requires the Navisworks exporter. It is absent on the tested installation.
+; The export/attach branch therefore remains UNTESTED here; no coordination facit is claimed.
+; Output theme coordination_generated avoids overwriting 19_coordination's files.
+(setvar "FILEDIA" 0)
+(setvar "CMDDIA" 0)
+(vl-load-com)
+(setq fx:base "C:/HDxf/doc/facit/" fx:skipped nil)
+(defun fx:need (ok message) (if (not ok) (progn (princ (strcat "\nFEL: " message "\n")) (exit))))
+(defun fx:idle () (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (progn (command) (fx:need nil "Command did not finish. Inspect F2."))))
+(defun fx:save (theme / pair v path) (foreach pair '(("r12" "R12") ("2000" "2000") ("2004" "2004") ("2007" "2007") ("2010" "2010") ("2013" "2013") ("2018" "2018")) (setq v (cadr pair) path (strcat fx:base "acad_" (car pair) "_dxf_" theme ".dxf")) (command "_.SAVEAS" "DXF" "_V" v "16" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path)) (setq path (strcat fx:base "acad_" (car pair) "_dxf_" theme "_bin.dxf")) (command "_.SAVEAS" "DXF" "_V" v "_B" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path))))
+(defun fx:attach (/ source before first second) (setvar "OSMODE" 0) (setvar "TILEMODE" 1) (setvar "PROXYGRAPHICS" 1) (setvar "REFPATHTYPE" 2) (command "_.BOX" "0,0,0" "30,20" "20") (fx:idle) (setq source (strcat fx:base "coordination_generated.nwc")) (command "_.NWCOUT" source) (fx:idle) (fx:need (findfile source) "NWCOUT produced no NWC file") (setq before (entlast)) (command "_.-COORDINATIONMODELATTACH" source "0,0,0" "1" "0") (fx:idle) (setq first (entlast)) (fx:need (/= before first) "First attach created no entity") (command "_.-COORDINATIONMODELATTACH" source "200,40,10" "0.5" "30") (fx:idle) (setq second (entlast)) (fx:need (/= first second) "Second attach created no entity") (command "_.REGENALL") (fx:idle) (fx:save "coordination_generated"))
+(defun fx:run () (fx:need (= 0 (vla-get-Count (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))))) "A new empty acad.dwt drawing is required") (if (getcname "NWCOUT") (fx:attach) (progn (setq fx:skipped T) (princ "\nHOPPAR OVER 23_coordination: NWCOUT saknas. Navisworks-exportor kravs; inga DXF-filer skrivs.\n"))))
+(setq fx:result (vl-catch-all-apply 'fx:run nil))
+(setvar "FILEDIA" 1)
+(setvar "CMDDIA" 1)
+(if (vl-catch-all-error-p fx:result) (princ (strcat "\nFEL 23_coordination: " (vl-catch-all-error-message fx:result) "\n")) (if fx:skipped (princ "\nKLAR 23_coordination (HOPPAR OVER - inga facitfiler)\n") (princ "\nKLAR 23_coordination\n")))

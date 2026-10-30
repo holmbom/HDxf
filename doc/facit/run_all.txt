@@ -1,0 +1,105 @@
+AutoCAD 2025 GUI - korordning for facit
+====================================
+
+INTE ett master-skript. Kor varje .scr separat i AutoCAD GUI.
+Fore VARJE punkt: Ctrl+N, valj acad.dwt, kontrollera en ny TOM ritning.
+Starta SCRIPT och valj filen, eller dra .scr till ritningsfonstret.
+Vanta pa KLAR <skriptnamn> i kommandoraden innan nasta punkt.
+Kor aldrig NEW/OPEN inuti ett .scr och kor inte nasta tema i foregaende ritning.
+Spara inte over dina egna ritningar; alla utdata ligger i doc/facit.
+
+Forberedelser
+------------
+- Full AutoCAD 2025 for Windows, inte LT. Inget HDxf-bygge behovs.
+- Behall hela mappen pa C:/HDxf/doc/facit/.
+- raster.bmp, raster_<a-ring>.bmp och environment.hdr ar medfoljande resurser.
+- doc/facit/underlay.pdf (en egen PDF, sida 1) maste finnas for 09_images.
+- 02_basic anvander BAT ur ltypeshp.shx om den installerade shape-filen finns.
+- 07_layers_styles anvander en faktiskt installerad ACB-farg om en lasbar bok hittas.
+- Fore 15_unicode: LISPSYS ska vara 1 eller 2. Om du andrar fran 0 maste AutoCAD
+  startas om INNAN skriptet kors. Det kravet galler Unicode-LISP, inte DXF-formatet.
+- 19_coordination: lagg en riktig coordination.nwd eller coordination.nwc har.
+- 23_coordination: NWCOUT kravs (Navisworks-exportor). Den saknas i den provade
+  installationen; skriptet nar KLAR med HOPPAR OVER och skriver inga filer.
+- 20_underlays: lagg en riktig source.dwf med bladet Model och source.dgn med
+  modellen Default har. Resurserna maste ha synlig geometri inom klippytorna.
+  Dessa tre externa modell/underlagsresurser har inte skapats av Codex.
+- 21_native_records sparar ocksa index_source.dwg for att AutoCAD ska skapa index.
+- Skripten ersatter sina egna DXF-filer vid omkorning. Anvand en ny ritning aven da.
+- Skript 01-21 ar korda till slut i AutoCAD 2025 (2026-10-25, ny ritning fran acad.dwt
+  per skript). 19 och 20 hoppar over med ett meddelande (skip.scr) om den externa filen
+  saknas. Ett skript fortsatter efter ett LISP-fel, sa kontrollera F2 efter FEL/error.
+- 22, 24 och 25 ar korda till KLAR 2026-10-26 och har 42 kontrollerade DXF-filer.
+  23 ar bara korverifierat i grenen utan NWCOUT; export/attach ar inte verifierat.
+  22 anvander mallens befintliga stilar; VIEWBASE gav Inventor Server failed to load.
+  25 har verifierade dynamiska kolumner med auto-hojd. Se coverage.md for kvarvarande
+  grenar och de aldre versionernas faktiska nedsparningsutfall.
+- Utan GUI-klick: acad.exe /nologo /t <acad.dwt> /b <fil.scr>, dar fil.scr gor
+  (setvar "FILEDIA" 0) (setvar "CMDDIA" 0) (command "_.SCRIPT" "<tema>.scr").
+- Hjalpfiler: skip.scr (avslutar 19/20 utan resurs), surface_body_probe.sat (11) och
+  index_source.dwg (21) skrivs av skripten sjalva.
+
+Kor i exakt denna ordning (Ctrl+N + acad.dwt fore VARJE rad)
+--------------------------------------------------------
+01. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/01_empty.scr (14 DXF)
+02. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/02_basic.scr (14 DXF)
+03. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/03_text.scr (14 DXF)
+04. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/04_blocks_attributes.scr (28 DXF)
+05. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/05_dimensions.scr (14 DXF)
+06. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/06_hatch.scr (42 DXF)
+07. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/07_layers_styles.scr (28 DXF)
+08. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/08_layouts.scr (14 DXF)
+09. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/09_images.scr (28 DXF)
+10. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/10_solids.scr (28 DXF)
+11. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/11_surfaces.scr (14 DXF)
+12. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/12_tables.scr (42 DXF)
+13. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/13_objects.scr (42 DXF)
+14. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/14_annotative.scr (28 DXF)
+15. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/15_unicode.scr (14 DXF)
+16. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/16_dynamic_blocks.scr (28 DXF)
+17. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/17_associative.scr (28 DXF)
+18. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/18_render_modeldoc.scr (28 DXF)
+19. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/19_coordination.scr (28 DXF)
+20. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/20_underlays.scr (14 DXF)
+21. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/21_native_records.scr (28 DXF)
+22. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/22_modeldoc_views.scr (14 DXF)
+23. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/23_coordination.scr (0 DXF har; NWCOUT saknas)
+24. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/24_rapidrt_preset.scr (14 DXF)
+25. Ctrl+N -> acad.dwt -> SCRIPT C:/HDxf/doc/facit/25_mtext_columns.scr (14 DXF)
+
+Antal och format
+----------------
+01-21: 518 unika DXF-filer om alla deras teman och resurser fungerar.
+01-18 och 21: 476 DXF. 19-20 tillfor 42 DXF nar externa resurser finns.
+22, 24 och 25: 42 nya DXF, skapade och kontrollerade 2026-10-26.
+23: 0 DXF i denna installation. Export/attach-grenen begar 14 DXF men ar inte kord.
+Varje tillstand sparas i R12, 2000, 2004, 2007, 2010, 2013 och 2018,
+bade ASCII (16 siffrors precision) och binart. Varje tillstand ger 14 DXF.
+Filerna heter acad_<ver>_dxf_<tema>.dxf och acad_<ver>_dxf_<tema>_bin.dxf.
+Fore/efter-fall har en extra innehallssuffix, t.ex. hatch_boundary_removed.
+outputs.txt listar de 518 forvantade filnamnen for 01-21 och ar inte andrad har.
+22/24/25 har teman modeldoc_views, rapidrt_preset respektive mtext_columns.
+23 anvander coordination_generated (aven coordination_generated.nwc) for att inte
+ersatta 19_coordination:s filer. Anvand bara en NWC som exportoren faktiskt skapat.
+probe.scr fanns redan och ar orord; det ingar inte i ordningen eller antalet.
+
+Kontrollera korningen
+--------------------
+Anvand F2 vid FEL, felmeddelande eller kvarvarande prompt. Avbryt med Esc och
+aterstall FILEDIA=1, CMDDIA=1 om ett ovantat AutoLISP/ActiveX-fel avbryter skriptet.
+KLAR betyder att skriptet natt slutet, inte att varje DXF-post ar granskat facit.
+En existerande fil fran en tidigare korning ar inte bevis for en lyckad ny korning.
+R12 kan spranga/tappa nyare typer; aldre format kan ge proxy/round-trip-data.
+Det ar AutoCAD:s nedsparningsutfall, inte ett lofte om native stod i malformatet.
+Kontrollera filernas tider och innehall efter korning, sarskilt native typer i 2018.
+BODY-provet i 11 rapporterar om ACISIN skapade BODY eller beholl en SURFACE.
+En solida med flera separata lumps ar inte automatiskt flera topp-body i en SAB.
+LAYER_INDEX/SPATIAL_INDEX och LIGHTLIST maste konstateras i AutoCAD:s utdata.
+coverage.md kopplar skripten till planernas facitlistor och redovisar gransgrenar.
+doc/README.md har Kan inte skriptas och de manuella kompletteringarna.
+
+R13/R14
+-------
+AutoCAD 2025:s SAVEAS erbjuder inte DXF R13/R14. Skripten bestaller darfor bara de
+sju uttryckligen begarda versionerna. F7-proven i AC1012/AC1014 maste komma fran
+en AutoCAD-utgava med det sparstodet; byt inte ACADVER i en annan fil.

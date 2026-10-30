@@ -1,0 +1,27 @@
+; fas9_extensions.scr - facit for step 9.18 (AutoCAD Map, TurboCAD and ZWCAD records; F9.24, F9.25 and the F9.27 branches of the
+; Map, TC and ZWM types). Run it once per original, with the original as input:
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_extensions.scr --input <original.dxf|dwg> --out <directory>
+; (AutoCAD 2025's core, plain commands, no LISP; see fas9_example.scr). The originals are the third-party drawings the records were
+; seen in (build/test-data/local-extensions/PROVENANCE.txt): a ZWCAD drawing with the 28 ZWM*STD records, a TurboCAD drawing with
+; TCOPTIONALDATA and TCPOINTENTITY, an AutoCAD Map 3D drawing with the eleven Map records. The producer of a file is its program,
+; not AutoCAD: they are observations until AutoCAD itself has saved them, and what AutoCAD 2025 saves from them is the facit.
+;
+; What the core can do with them: open the drawing (the plugins that own the records are not loaded, so AutoCAD holds a record of
+; an unknown class as a proxy and writes it back as its class's records, or as ACAD_PROXY_OBJECT/ACAD_PROXY_ENTITY: the saved files
+; show which), save it in every version and format, and change what is not a record of the plugin: erase the entities (the
+; TCPOINTENTITY, the entities that hold a TCOPTIONALDATA's reactors) and purge what nothing uses, which is the "removed target" of
+; F9.24/F9.25. What the core cannot do (plan 9.18, "Ej testat"): no command changes a scalar or a list of a Map, TC or ZWM record
+; (that is the plugins' dialogs, MAPWSPACE, the ZWCAD standard manager: not in the core), so a changed own scalar and a changed
+; repeated part have no AutoCAD file, and Map's non-empty branches beyond the one display map of the original, and AutoCAD's own writing
+; of a ZWMSTANDARD whose 70 is 483351136 in binary (it is the file AutoCAD makes of the original that shows it, below), are ej testat.
+; Nothing is drawn here to make up a Map grammar: the script only opens what the original has.
+;EXPECT DICTIONARY
+;SAVE extensions
+_.ERASE
+_ALL
+
+_.-PURGE
+_ALL
+*
+_N
+;SAVE extensions erased

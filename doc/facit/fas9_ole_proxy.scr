@@ -1,0 +1,31 @@
+; fas9_ole_proxy.scr - facit script of step 9.3 (F9.1 OLEFRAME/OLE2FRAME and F9.2 ACAD_PROXY_ENTITY/ACAD_PROXY_OBJECT).
+; Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_ole_proxy.scr --input build/test-data/libre/gh209_1_2010.dxf
+; The drawing it starts from is an AutoCAD 2010 file (LibreDWG's gh209_1 as AutoCAD saved it, test/data/manifest.cmake) that
+; has three ACAD_PROXY_OBJECT: AutoCAD 2025's core opens it, so the proxy objects it saves are AutoCAD's own, in every
+; version AutoCAD 2025 can save. The core does not have the application that wrote the objects, so they stay proxies.
+;
+; What the core cannot do, and what is therefore "ej testat" (plan 2026-10-27-fas-9-typer.md, F9.1, F9.2):
+;   F9.1  OLEFRAME and OLE2FRAME: an OLE object is made by INSERTOBJ / PASTESPEC / OLELINKS, which open the dialog of an OLE
+;         server and need the clipboard or a registered server; the core has neither and no OLE server may be started here.
+;         No AutoCAD-saved OLE2FRAME is in the corpus (the R14 files that list OLE2FRAME in CLASSES have no record of it).
+;   F9.2  ACAD_PROXY_ENTITY: a proxy entity is a custom entity of an application that is not loaded; making one needs that
+;         application (ObjectARX) and a drawing that has it; no AutoCAD-saved file with a proxy entity is in the corpus.
+;         The two 310 areas of an entity, the four pointer kinds of a proxy object with a removable target, and a
+;         reordered CLASSES register likewise need such an application.
+;
+; Plain AutoCAD commands, no LISP. ;SAVE saves R12, 2000, 2004, 2007, 2010, 2013 and 2018, ASCII and binary.
+;EXPECT ACAD_PROXY_OBJECT
+;SAVE proxy
+; PROXYGRAPHICS 0: AutoCAD writes no proxy graphics (an entity's 92/310); the proxy objects are as before
+_.PROXYGRAPHICS
+0
+;SAVE proxy nographics
+_.PROXYGRAPHICS
+1
+; Purge everything unused: what AutoCAD does with the proxy objects and the objects they point to when their owners go
+_.-PURGE
+_A
+*
+_N
+;SAVE proxy purged

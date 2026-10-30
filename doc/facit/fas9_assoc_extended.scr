@@ -1,0 +1,731 @@
+; fas9_assoc_extended.scr - facit script of step 9.15 (F9.12 and F9.11): the associative framework's other action
+; bodies, parameters, constraints, variables, dimension bodies and arrays, with the changes AutoCAD makes to them.
+; Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_assoc_extended.scr
+; It starts from AutoCAD's own acad.dwt (a new empty drawing) and uses plain AutoCAD commands, no LISP (the core has
+; none). One drawing is built (every part in its own place, so a pick finds one object) and saved as `assoc_extended`;
+; every change after it is made after an UNDO mark and taken back to it (a plain U would undo the SAVEAS).
+;
+; What is made, and the record types AutoCAD writes for it (2018, ASCII; the same in 2000 … 2018 and binary):
+;   2D constraints   GCHORIZONTAL (2 points), DCLINEAR, DCANGULAR (3 points), GCCOINCIDENT, GCFIX, GCVERTICAL, DCVERTICAL,
+;                    DCALIGNED, AUTOCONSTRAIN: ACDBASSOC2DCONSTRAINTGROUP, ACDBASSOCGEOMDEPENDENCY (the lines)
+;   parameters       -PARAMETERS (a user parameter), a constraint whose value is an expression of it, a constraint
+;                    value of a fraction: ACDBASSOCVARIABLE, ACDBASSOCVALUEDEPENDENCY
+;   arrays           ARRAYRECT, ARRAYPOLAR, ARRAYPATH with ARRAYASSOCIATIVITY 1; ARRAYEDIT: ACDBASSOCARRAYACTIONBODY and
+;                    (a replaced item) ACDBASSOCARRAYMODIFYACTIONBODY
+;   surfaces         SURFOFFSET (ACDBASSOCOFFSETSURFACEACTIONBODY, ACDBASSOCASMBODYACTIONPARAM), SURFEXTEND, SURFBLEND,
+;                    SURFPATCH, SURFNETWORK, SURFTRIM (ACDBASSOCTRIMSURFACEACTIONBODY, ACDBASSOCTRIMMINGPATHACTIONPARAM,
+;                    ACDBASSOCRESTOREENTITYSTATEACTIONBODY), SURFFILLET (ACDBASSOCFILLETSURFACEACTIONBODY,
+;                    ACDBASSOCFACEACTIONPARAM), FILLETEDGE and CHAMFEREDGE of a surface
+;                    (ACDBASSOCEDGEFILLETACTIONBODY, ACDBASSOCEDGECHAMFERACTIONBODY)
+;   dimensions       DIMASSOC 2 with DIMLINEAR, DIMALIGNED, DIMANGULAR, DIMORDINATE, DIMDIAMETER, DIMRADIUS on the vertices
+;                    and circle edges of a solid (SOLIDHIST 1): ACDBASSOCROTATEDDIMACTIONBODY, ...ALIGNEDDIM...,
+;                    ...3POINTANGULARDIM..., ...ORDINATEDIM..., ...DIAMETRICDIM..., ...RADIALDIM...,
+;                    ACDBASSOCOSNAPPOINTREFACTIONPARAM, ACDBASSOCVERTEXACTIONPARAM
+;   MLEADER          attached to a solid's vertex: ACDBASSOCMLEADERACTIONBODY
+;   solids           a box and a cylinder with FILLETEDGE and CHAMFEREDGE: the persistent subentity managers with history
+;
+; Changes: -PARAMETERS Edit (a user parameter, a dimension's value), ARRAYEDIT (rows, a replaced item), a MOVE of the
+; geometry, and an ERASE of what an action depends on (the profile, a cutting curve, an array's source, a constrained
+; line, a solid): AutoCAD erases the actions that depended on it (plan, F9.12; HDxf does the same, B19).
+;
+; What AutoCAD 2025's core cannot do, and what is therefore "ej testat" (plan 2026-10-27-fas-9-typer.md, F9.12):
+;   - ACDBASSOCCOMPOUNDACTIONPARAM, ACDBASSOCOBJECTACTIONPARAM, ACDBASSOCDIMDEPENDENCYBODY and
+;     ACDBASSOCENTITYCLONEACTIONBODY: no command of the core makes one (searched: the commands of this script, the ones
+;     of fas9_assoc_core.scr and the 111 sample drawings AutoCAD 2025 installs)
+;   - selecting an array item with a pick (Ctrl-click) to move it: only ARRAYEDIT's REPlace makes an item override
+;   - a constraint made by picking an object (GCPARALLEL, GCPERPENDICULAR, GCTANGENT ...): a typed point is no pick
+;     for those commands; AUTOCONSTRAIN applies what a window of objects asks for
+_.SURFACEASSOCIATIVITY
+1
+_.SURFACEMODELINGMODE
+0
+_.DELOBJ
+0
+_.ARRAYASSOCIATIVITY
+1
+_.DIMASSOC
+2
+_.SOLIDHIST
+1
+_.CONSTRAINTINFER
+0
+_.OSMODE
+0
+_.ISOLINES
+8
+; ---- 2D: constraints and parameters (top view) ----
+_.-VIEW
+_Top
+_.ZOOM
+_Window
+-30,-60
+300,270
+_.LINE
+0,0
+80,0
+
+_.GCHORIZONTAL
+_2Points
+_Endpoint
+0,0
+_Endpoint
+80,0
+_.DCLINEAR
+_Endpoint
+0,0
+_Endpoint
+80,0
+40,-20
+80
+_.-PARAMETERS
+_New
+width
+40
+_.LINE
+0,50
+80,50
+
+_.DCLINEAR
+_Endpoint
+0,50
+_Endpoint
+80,50
+40,70
+width*2
+_.LINE
+0,100
+80,130
+
+_.LINE
+0,100
+80,100
+
+_.DCANGULAR
+_3Point
+_Endpoint
+0,100
+_Endpoint
+80,130
+_Endpoint
+80,100
+50,110
+33.25
+_.LINE
+120,0
+150,0
+
+_.LINE
+152,13
+190,13
+
+_.GCCOINCIDENT
+_Endpoint
+150,0
+_Endpoint
+152,13
+_.GCFIX
+_Endpoint
+120,0
+_.LINE
+220,0
+220,40
+
+_.GCVERTICAL
+_2Points
+_Endpoint
+220,0
+_Endpoint
+220,40
+_.DCVERTICAL
+_Endpoint
+220,0
+_Endpoint
+220,40
+250,20
+40
+_.LINE
+200,60
+240,90
+
+_.DCALIGNED
+_Endpoint
+200,60
+_Endpoint
+240,90
+230,60
+50
+; AUTOCONSTRAIN: lines and circles that are almost horizontal, parallel, perpendicular, concentric
+_.LINE
+0,150
+80,151
+
+_.LINE
+0,180
+80,182
+
+_.LINE
+0,210
+60,210
+
+_.LINE
+60,210
+60,240
+
+_.CIRCLE
+150,170
+15
+_.CIRCLE
+150.5,170.2
+8
+_.AUTOCONSTRAIN
+_Window
+-10,140
+170,250
+
+; ---- arrays (top view) ----
+_.ZOOM
+_Window
+255,-10
+530,150
+_.CIRCLE
+270,20
+4
+_.ARRAYRECT
+_L
+
+_COUnt
+3
+2
+_Spacing
+20
+25
+_eXit
+_.CIRCLE
+420,20
+4
+_.ARRAYPOLAR
+_L
+
+400,40
+5
+300
+_eXit
+_.SPLINE
+270,110
+330,130
+390,100
+
+
+
+_.CIRCLE
+270,110
+3
+_.ARRAYPATH
+_L
+
+330,130
+6
+_Divide
+_eXit
+; ---- surface trim needs a top view of its plane ----
+_.ZOOM
+_Window
+-10,350
+70,410
+_.PLINE
+0,360
+60,360
+60,400
+0,400
+_Close
+_.PLANESURF
+_Object
+_L
+
+_.CIRCLE
+30,380
+10
+_.SURFTRIM
+_Window
+-1,359
+61,401
+
+_Window
+18,368
+42,392
+
+30,380
+
+; ---- surfaces (isometric view) ----
+_.-VIEW
+_SWIso
+; an extruded surface and its offset
+_.ZOOM
+C
+10,310,10
+70
+_.PLINE
+0,300
+20,300
+20,320
+0,320
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+15
+_.SURFOFFSET
+_L
+
+10
+; an extruded surface and its extension
+_.ZOOM
+C
+60,310,10
+70
+_.PLINE
+50,300
+70,300
+70,320
+50,320
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+15
+_.SURFEXTEND
+_SUbobject
+60,300,15
+
+5
+; the edge fillet and the edge chamfer of an extruded surface
+_.ZOOM
+C
+110,310,10
+70
+_.PLINE
+100,300
+120,300
+120,320
+100,320
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+15
+_.FILLETEDGE
+_Radius
+3
+120,300,7.5
+
+
+_.ZOOM
+C
+160,310,10
+70
+_.PLINE
+150,300
+170,300
+170,320
+150,320
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+15
+_.CHAMFEREDGE
+_Distance
+2
+3
+170,300,7.5
+
+
+; a blend between two extruded surfaces
+_.ZOOM
+C
+240,310,10
+90
+_.PLINE
+200,300
+220,300
+220,320
+200,320
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+15
+_.PLINE
+260,300
+280,300
+280,320
+260,320
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+15
+_.SURFBLEND
+_SUbobject
+220,310,15
+
+_SUbobject
+260,310,15
+
+
+; a patch over a closed curve
+_.ZOOM
+C
+320,315,0
+60
+_.PLINE
+300,300
+340,300
+340,330
+300,330
+_Close
+_.SURFPATCH
+_CUrves
+320,300
+
+
+; a network of four curves
+_.ZOOM
+C
+380,320,0
+60
+_.SPLINE
+360,300,0
+380,300,5
+400,300,0
+
+
+
+_.SPLINE
+360,340,0
+380,340,5
+400,340,0
+
+
+
+_.SPLINE
+360,300,0
+360,320,5
+360,340,0
+
+
+
+_.SPLINE
+400,300,0
+400,320,5
+400,340,0
+
+
+
+_.SURFNETWORK
+380,300,5
+380,340,5
+
+360,320,5
+400,320,5
+
+; a fillet between two extruded walls
+_.ZOOM
+C
+20,435,15
+70
+_.LINE
+0,420
+40,420
+
+_.EXTRUDE
+_L
+
+30
+_.LINE
+40,420
+40,450
+
+_.EXTRUDE
+_L
+
+30
+_.SURFFILLET
+_Radius
+5
+20,420,30
+40,435,30
+
+; ---- solids and the dimensions that stand on their vertices and edges ----
+_.ZOOM
+C
+20,495,10
+80
+_.BOX
+0,480,0
+40,510
+20
+_.DIMLINEAR
+_Endpoint
+0,480,20
+_Endpoint
+40,480,20
+20,470,20
+_.DIMALIGNED
+_Endpoint
+40,480,20
+_Endpoint
+40,510,20
+50,495,20
+_.DIMANGULAR
+
+_Endpoint
+40,480,20
+_Endpoint
+40,510,20
+_Endpoint
+0,480,20
+20,490,20
+_.DIMORDINATE
+_Endpoint
+0,510,20
+_Xdatum
+0,520,20
+_.ZOOM
+C
+100,495,10
+60
+_.CYLINDER
+100,495,0
+10
+20
+_.DIMDIAMETER
+110,495,20
+120,505,20
+_.DIMRADIUS
+110,495,20
+120,505,20
+; a box with its edge filleted, a box with its edge chamfered
+_.ZOOM
+C
+180,495,10
+60
+_.BOX
+160,480,0
+200,510
+20
+_.FILLETEDGE
+_Radius
+3
+180,480,20
+
+
+_.ZOOM
+C
+260,495,10
+60
+_.BOX
+240,480,0
+280,510
+20
+_.CHAMFEREDGE
+_Distance
+2
+3
+260,480,20
+
+
+; a multileader that stands on a vertex of a solid
+_.ZOOM
+C
+400,495,10
+80
+_.BOX
+380,480,0
+420,510
+20
+_.MLEADER
+_Endpoint
+420,480,20
+440,460,30
+Hello
+;EXPECT ACDBASSOC2DCONSTRAINTGROUP ACDBASSOCVARIABLE ACDBASSOCVALUEDEPENDENCY ACDBASSOCARRAYACTIONBODY ACDBASSOCOFFSETSURFACEACTIONBODY ACDBASSOCEXTENDSURFACEACTIONBODY ACDBASSOCEDGEFILLETACTIONBODY ACDBASSOCEDGECHAMFERACTIONBODY ACDBASSOCBLENDSURFACEACTIONBODY ACDBASSOCPATCHSURFACEACTIONBODY ACDBASSOCNETWORKSURFACEACTIONBODY ACDBASSOCTRIMSURFACEACTIONBODY ACDBASSOCFILLETSURFACEACTIONBODY ACDBASSOCROTATEDDIMACTIONBODY ACDBASSOCALIGNEDDIMACTIONBODY ACDBASSOC3POINTANGULARDIMACTIONBODY ACDBASSOCORDINATEDIMACTIONBODY ACDBASSOCDIAMETRICDIMACTIONBODY ACDBASSOCRADIALDIMACTIONBODY ACDBASSOCMLEADERACTIONBODY
+;SAVE assoc_extended
+; ---- changes: each after an UNDO mark, taken back to it ----
+_.UNDO
+_Mark
+; a user parameter edited: the dimension whose value is an expression of it follows
+_.-PARAMETERS
+_Edit
+width
+30
+;SAVE assoc_extended parameter_edited
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; a dimensional constraint's value edited (its own variable)
+_.-PARAMETERS
+_Edit
+d1
+100
+;SAVE assoc_extended distance_edited
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; a constrained line erased
+_.-VIEW
+_Top
+_.ZOOM
+_Window
+-30,-60
+300,270
+_.ERASE
+40,50
+
+;SAVE assoc_extended constrained_line_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; the circle that trims a plane erased (top view)
+_.ZOOM
+_Window
+-10,350
+70,410
+_.ERASE
+40,380
+
+;SAVE assoc_extended trim_curve_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; the rectangular array's rows: a list of the array action
+_.ZOOM
+_Window
+255,-10
+530,150
+_.ARRAYEDIT
+274,20
+_Rows
+4
+
+
+_eXit
+;SAVE assoc_extended array_rows
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; one item of the rectangular array replaced by another object (an item override)
+_.ZOOM
+_Window
+255,-10
+530,150
+_.CIRCLE
+350,80
+3
+_.ARRAYEDIT
+299,20
+_REPlace
+_L
+
+350,80
+299,20
+
+_eXit
+;SAVE assoc_extended array_item_replaced
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; the isometric parts: a source surface erased, a patch's curve erased, a solid erased, a surface moved
+_.-VIEW
+_SWIso
+_.ZOOM
+C
+10,310,10
+70
+_.ERASE
+10,300,15
+
+;SAVE assoc_extended offset_source_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.ZOOM
+C
+320,315,0
+60
+_.ERASE
+320,300
+
+;SAVE assoc_extended patch_curve_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.ZOOM
+C
+380,320,0
+60
+_.ERASE
+380,300,5
+
+;SAVE assoc_extended network_curve_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.ZOOM
+C
+20,495,10
+80
+_.ERASE
+20,480,20
+
+;SAVE assoc_extended solid_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.ZOOM
+C
+240,310,10
+90
+_.MOVE
+270,300,15
+
+0,0,0
+0,0,10
+;SAVE assoc_extended blend_surface_moved
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.ZOOM
+C
+20,435,15
+70
+_.ERASE
+20,420,30
+
+;SAVE assoc_extended fillet_wall_erased
+_.UNDO
+_Back

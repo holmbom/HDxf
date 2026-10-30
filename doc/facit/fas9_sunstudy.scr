@@ -1,0 +1,44 @@
+; fas9_sunstudy.scr - facit for step 9.11 (SUN and the sun study; F9.14, F9.15). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_sunstudy.scr
+; (AutoCAD 2025's core on acad.dwt). Plain AutoCAD commands, no LISP; see fas9_example.scr.
+;
+; What the core was tried to make: the sun of the current viewport (SUNSTATUS, with LATITUDE, LONGITUDE, TIMEZONE and NORTHDIRECTION),
+; kept with the model space viewport (VPORT 361) and, after MVIEW and MSPACE, in a layout viewport (VIEWPORT 361). The variables are set
+; but the core makes no SUN object and no 361 (run 2026-10-28: no SUN in the 2018 file): the SUN of F9.14 is the corpus's (13_objects.scr,
+; doc/facit/acad_*_dxf_objects.dxf) and its sun-off / changed-viewport pair is ej testat.
+;
+; What the core cannot make: a SUNSTUDY. There is no command for it ("Unknown command": SUNSTUDY, -SUNSTUDY, SUNPROPERTIES, -GEOGRAPHICLOCATION)
+; and the object is made by the Sun Study wizard of the GUI. F9.15's day sample (the hours 12 and another above 1, a date list and a
+; date range, the sheet-set branches, a named view and a visual style) and its ASCII/binary pair, which decides the 290 of the hour
+; (a byte in a binary file), is therefore ej testat (plan 9.11): the grammar is the reference's and the hour is an integer.
+_.SUNSTATUS
+1
+_.LATITUDE
+59.33
+_.LONGITUDE
+18.07
+_.TIMEZONE
+1000
+_.NORTHDIRECTION
+30
+_.BOX
+0,0,0
+30,20
+20
+;EXPECT SUN
+;SAVE sun
+_.SUNSTATUS
+0
+;SAVE sun off
+_.SUNSTATUS
+1
+_.TILEMODE
+0
+_.MVIEW
+0,0
+200,150
+_.MSPACE
+_.SUNSTATUS
+1
+_.PSPACE
+;SAVE sun layout_viewport

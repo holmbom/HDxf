@@ -1,0 +1,88 @@
+; fas9_coordination_xref.scr - facit script of step 9.6 (F9.23 coordination model and xref panels). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_coordination_xref.scr
+; It makes its own xref source: a rectangle, a circle and a text are drawn, written with -WBLOCK to fas9_xref_source.dwg (in the
+; directory the facit run writes to; the objects are deleted by -WBLOCK), and that drawing is attached as an xref. Then one change
+; per file: rotation and mirror of the xref's INSERT (a mirror is a negative scale), unload, reload, a changed path, detach.
+;
+; What AutoCAD 2025's core cannot do, and what is therefore "ej testat" (plan 2026-10-27-fas-9-typer.md, F9.23):
+;   COORDINATION_MODEL / NAVISWORKSMODELDEF (-COORDINATIONMODELATTACH exists in the core but opens only a REAL Navisworks model:
+;     "<file> does not point to a valid model file" for an NWD that is any other file, and the prompt then repeats until the
+;     script's lines are used up); NWCOUT, which could make an NWC from a drawing, is not in the core; no real NWD/NWC is in the
+;     corpus or on the web (searched 2026-10-28: only format descriptions). So there is no AutoCAD record of a coordination model
+;     and no 16 + 1 values of code 40, no two 290 of the definition, no ACAD_BIM_DEFINITIONS entry from AutoCAD: the groups are
+;     Autodesk's 2018 DXF reference's and what AutoCAD's core accepted in phase 6 (B78).
+;     When a real model is at doc/facit/coordination.nwd, the lines below (comments) make the files: remove the semicolons.
+;   XREFPANELOBJECT / EXACXREFPANELOBJECT: no AutoCAD file has a record of either (the core's -XREF does not make one; the class
+;     EXACXREFPANELOBJECT, "ExAcXREFPanelObject" of the application EXAC_ESW, is only registered in CLASSES of every AutoCAD file);
+;     the objects belong to the External References palette of the AutoCAD user interface, which the core does not have, and
+;     Autodesk's DXF reference does not document them. Their grammar is not established: HDxf keeps such a record as it is.
+;
+; ;_.-COORDINATIONMODELATTACH
+; ;coordination.nwd
+; ;0,0,0
+; ;1
+; ;0
+; ;;SAVE coordination
+; ;_.ROTATE
+; ;_ALL
+; ;
+; ;0,0
+; ;30
+; ;;SAVE coordination rotated
+;
+; Plain AutoCAD commands, no LISP. ;SAVE saves R12, 2000, 2004, 2007, 2010, 2013 and 2018, ASCII and binary.
+_.RECTANG
+0,0
+60,40
+_.CIRCLE
+30,20
+10
+_.TEXT
+5,5
+5
+0
+XREF SOURCE
+_.-WBLOCK
+fas9_xref_source.dwg
+
+0,0,0
+_ALL
+
+_.-XREF
+_A
+fas9_xref_source.dwg
+0,0,0
+1
+1
+0
+;EXPECT INSERT
+;SAVE xref
+_.ROTATE
+_ALL
+
+0,0
+30
+;SAVE xref rotated
+_.MIRROR
+_ALL
+
+0,50
+100,50
+_Y
+;SAVE xref mirrored
+_.-XREF
+_U
+fas9_xref_source
+;SAVE xref unloaded
+_.-XREF
+_R
+fas9_xref_source
+_.-XREF
+_P
+fas9_xref_source
+.\fas9_xref_source.dwg
+;SAVE xref path_changed
+_.-XREF
+_D
+fas9_xref_source
+;SAVE xref detached

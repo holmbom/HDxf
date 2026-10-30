@@ -1,0 +1,67 @@
+; fas9_document_data.scr - facit for step 9.8 (FIELD, FIELDLIST, DATATABLE/ACDBDATATABLE, OBJECT_PTR, VBA_PROJECT;
+; F9.8, F9.22, F9.27). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_document_data.scr
+; (AutoCAD 2025's core, a new empty drawing from acad.dwt). Plain AutoCAD commands, no LISP; see fas9_example.scr.
+;
+; What the core can make of them:
+;   FIELD, FIELDLIST  - the TEXT command turns a typed %<\AcVar ...>% / %<\AcExpr ...>% into a real field (checked
+;                       2026-10-28: the file has FIELD with its child fields and a FIELDLIST of all of them). There is
+;                       no -FIELD or UPDATEFIELD command and no object picking in the core, so a field that names an
+;                       object (AcObjProp, 331) is the one AutoCAD's GUI made in doc/facit/12_tables.scr
+;                       (acad_<ver>_dxf_tables*.dxf, with its field_target_changed pair). One TEXT with two fields
+;                       gives a FIELD of two children (90 2). FIELDEVAL + REGEN is what the core has for an update. An
+;                       AcObjProp field with no object to name is the one AutoCAD could not evaluate: its status is 16 and
+;                       its error 600 with an empty cache, the "inaktuell" branch of F9.8 (the only way the core makes one).
+;   ACDBDATATABLE / DATATABLE - AutoCAD makes them with every table of 2000 and 2004 (the round-trip of the cells,
+;                       even of an empty -TABLE): the tables of fas9_tables.scr (acad_2000/2004_dxf_table_empty*.dxf)
+;                       and Erik's tables with text cells (acad_<ver>_dxf_tables.dxf). Value types other than a table's (bool, point, object id) are Erik's
+;                       doc/facit/acad_<ver>_dxf_native_records.dxf.
+;   OBJECT_PTR, VBA_PROJECT - ej testat (F9.22): the core has no ASE (AutoCAD SQL Extension: dbConnect is gone) and
+;                       no VBA project to embed (VBAMAN/VBAIDE are dialogs, and a project needs the VBA enabler and a
+;                       .dvb); the record shape is Autodesk's reference, no AutoCAD file shows a payload.
+_.FILEDIA
+0
+_.CMDDIA
+0
+_.OSMODE
+0
+_.TEXT
+0,100
+2.5
+0
+Plain text without a field
+_.TEXT
+0,90
+2.5
+0
+Author: %<\AcVar Author>%
+_.TEXT
+0,80
+2.5
+0
+Drawing file: %<\AcVar Filename \f "%fn6">%
+_.TEXT
+0,70
+2.5
+0
+Sum = %<\AcExpr (2.5+7.25) \f "%lu2%pr2">%
+_.TEXT
+0,65
+2.5
+0
+Length = %<\AcObjProp Object(%<\_ObjIdx 0>%).Length \f "%lu2%pr3">%
+_.TEXT
+0,60
+2.5
+0
+Both: %<\AcVar Filename \f "%fn1">% and %<\AcExpr (3*4) \f "%lu2%pr0">%
+;EXPECT TEXT FIELD FIELDLIST
+;SAVE fields
+_.FIELDEVAL
+31
+_.REGEN
+;SAVE fields updated
+_.ERASE
+_L
+
+;SAVE fields erased

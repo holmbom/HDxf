@@ -1,0 +1,8 @@
+(setvar "FILEDIA" 0)
+(setvar "CMDDIA" 0)
+(command "_.LINE" "0,0" "100,50" "")
+(command "_.CIRCLE" "50,50" "20")
+(foreach v '("R12" "2000" "2004" "2007" "2010" "2013" "2018") (command "_.SAVEAS" "DXF" "_V" v "16" (strcat "C:/HDxf/doc/facit/probe_" v ".dxf")) (if (> (getvar "CMDACTIVE") 0) (command "_Y")))
+(setvar "FILEDIA" 1)
+(setvar "CMDDIA" 1)
+(princ "\nPROBE KLAR\n")

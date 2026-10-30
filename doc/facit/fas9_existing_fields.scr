@@ -1,0 +1,227 @@
+; fas9_existing_fields.scr - the facit of step 9.2 (plan 2026-10-27-fas-9-typer.md): WIPEOUT, WIPEOUTVARIABLES,
+; SCALE, the colours of BLOCK and ENDBLK, and the vertex identifiers (91) of LWPOLYLINE and POLYLINE/VERTEX (F9.21).
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_existing_fields.scr
+; starts AutoCAD 2025's core on acad.dwt (a new empty drawing). Plain AutoCAD commands, no LISP (see fas9_example.scr).
+;
+; What the commands of the core cannot do, and what the plan calls "ej testat" because of it:
+;  - BLOCK and ENDBLK get a colour only from the anonymous blocks AutoCAD makes (a dimension's *D block takes the
+;    dimension's colour on both records); -BLOCK of a coloured circle gives neither. No command makes the two
+;    records differ, so a BLOCK with a colour and an ENDBLK without (or two colours) has no AutoCAD file made here
+;    (build/test-data/local-r13r14/7H12R10F_schneider_r14_dimension_spline.dxf, an AutoCAD R14 file, is the one
+;    observation: BLOCK 62 = 7, ENDBLK none). F9.21 asks for the 1024 case: AutoCAD wrote no such flag anywhere
+;    (70 = 1 on every constrained polyline), so there is no file for it.
+;  - PEDIT's vertex editing ("Edit vertex") needs visible vertices: a vertex is added with CHAMFER and removed
+;    with BREAK instead. OVERKILL is not in the core.
+;  - Snaps and picks need a window the core does not have: AUTOCONSTRAIN on the last object gives the vertices
+;    their identifiers (GCFIX at an endpoint does not work here).
+;
+; --- WIPEOUT and WIPEOUTVARIABLES: a polygon, the frame variable 0 / 1 / 2, rotated, scaled, mirrored, from a polyline
+_.WIPEOUT
+0,0
+50,0
+50,30
+10,40
+_Close
+_.ZOOM
+_E
+;EXPECT WIPEOUT WIPEOUTVARIABLES
+;SAVE wipeout
+_.WIPEOUTFRAME
+0
+;SAVE wipeout frame0
+_.WIPEOUTFRAME
+2
+;SAVE wipeout frame2
+_.WIPEOUTFRAME
+1
+_.ROTATE
+_L
+
+0,0
+30
+_.ZOOM
+_E
+;SAVE wipeout rotated
+_.SCALE
+_L
+
+0,0
+2
+_.ZOOM
+_E
+;SAVE wipeout scaled
+_.MIRROR
+_L
+
+0,0
+0,10
+_Yes
+_.ZOOM
+_E
+;SAVE wipeout mirrored
+_.RECTANG
+100,100
+140,130
+_.WIPEOUT
+_Polyline
+_L
+_Yes
+_.ZOOM
+_E
+;SAVE wipeout from_polyline
+;
+; --- SCALE: three scales with other numbers than 1:n, then one removed (the list is renumbered by AutoCAD)
+_.-SCALELISTEDIT
+_Add
+1:7
+1:7
+_Add
+3 to 2
+3:2
+_Add
+5/16 in = 1 ft
+0.3125:12
+_Exit
+;SAVE scales
+_.-SCALELISTEDIT
+_Delete
+1:7
+_Exit
+;SAVE scales deleted
+;
+; --- BLOCK and ENDBLK colours: the *D blocks of dimensions in an ACI colour, a true colour, ByLayer and DIMCLRD
+_.COLOR
+193
+_.DIMLINEAR
+0,0
+50,0
+25,10
+_.COLOR
+_Truecolor
+10,20,30
+_.DIMLINEAR
+0,20
+50,20
+25,30
+_.COLOR
+_ByLayer
+_.DIMCLRD
+3
+_.DIMLINEAR
+0,40
+50,40
+25,50
+_.DIMCLRD
+0
+_.DIMLINEAR
+0,60
+50,60
+25,70
+;SAVE blockcolors
+;
+; --- Vertex identifiers: AUTOCONSTRAIN gives every vertex of a polyline its own; reversed, chamfered (new vertices
+; have none), a second polyline, broken (a vertex gone, the others keep theirs) and converted to a heavy POLYLINE
+_.RECTANG
+180,0
+250,35
+_.AUTOCONSTRAIN
+_L
+
+_.REGENALL
+;SAVE vertexids
+_.PEDIT
+_L
+_Reverse
+
+;SAVE vertexids reversed
+_.CHAMFER
+_Distance
+5
+5
+_.CHAMFER
+_Polyline
+_L
+;SAVE vertexids chamfered
+_.PLINE
+0,100
+40,100
+80,100
+80,140
+
+_.AUTOCONSTRAIN
+_L
+
+;SAVE vertexids collinear
+_.BREAK
+_L
+20,100
+60,100
+;SAVE vertexids broken
+_.CONVERTPOLY
+_Heavy
+_All
+
+;SAVE vertexids heavy
+;
+; --- WIPEOUT in a block inserted turned, scaled and mirrored (X scale -2, Y 1.5, 30 degrees), and in paper space: what
+; AutoCAD's extents of them are. The drawing so far is erased first, so that the extents are the wipeout's alone
+_.ERASE
+_All
+
+; Two lines in a block inserted turned by 30 degrees: AutoCAD's extents are those of the lines, not of the turned box
+_.LINE
+0,0
+50,0
+
+_.LINE
+50,0
+25,40
+
+_.-BLOCK
+LBLK
+0,0
+_All
+
+_.-INSERT
+LBLK
+100,200
+1
+1
+30
+_.ZOOM
+_E
+;SAVE insert_rotated
+_.ERASE
+_All
+
+_.WIPEOUT
+0,0
+50,0
+50,30
+10,40
+_Close
+_.-BLOCK
+WBLK
+0,0
+_L
+
+_.-INSERT
+WBLK
+100,200
+-2
+1.5
+30
+_.ZOOM
+_E
+;SAVE wipeout_insert
+_.TILEMODE
+0
+_.WIPEOUT
+0,0
+50,0
+50,30
+10,40
+_Close
+_.ZOOM
+_E
+;SAVE wipeout_paper

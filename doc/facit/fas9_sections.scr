@@ -1,0 +1,107 @@
+; fas9_sections.scr - facit for step 9.12 (SECTIONOBJECT, SECTION_MANAGER, SECTION_SETTINGS; F9.16). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_sections.scr
+; (AutoCAD 2025's core on acad.dwt, a new empty drawing). Plain AutoCAD commands, no LISP; see fas9_example.scr.
+; An empty line is Enter (it ends -LAYER, the drawn line of a section and the selection of CHPROP): none is left between
+; the commands, or AutoCAD repeats the last command.
+;
+; What the core has: SECTIONPLANE (the command line form: Draw section / Orthographic / Type, then for a slice, a boundary and a
+; volume a point and a through point), CHPROP, MOVE, ROTATE, MIRROR, ERASE, -LAYER, BOX. Draw section asks for its points and
+; the point in the direction of the section view. Every section AutoCAD makes here has SECTION_SETTINGS with 90 2 and 91 0 (no
+; settings of a type), and the SECTION_MANAGER lists none (70 only).
+;
+; Not made here (no command in the core; plan 9.12, "Ej testat", F9.16):
+;   - SECTIONPLANEJOG, LIVESECTION, SECTIONPLANETOBLOCK and SECTIONPLANESETTINGS: the core knows the names but needs a
+;     picked section object or a dialog (SECTIONPLANEJOG ends at "Select section object": a point does not pick the
+;     indicator, Last is refused): a section with a jog after it was drawn, a live section (a manager that lists sections, 90
+;     and 330), settings of a type (SectionTypeSettings with its geometries: Autodesk's reference and the old plan's B.67
+;     only) and a section turned into a block have no AutoCAD file here
+;   - the indicator's color and transparency (properties of the section object itself; CHPROP changes the entity's color)
+; The saved states are one change apart, as the register's pairs ask: the last section made is the one that is changed.
+_.-LAYER
+_M
+HDXF_SECTIONS
+
+_.BOX
+70,160,20
+@60,40
+40
+_.SECTIONPLANE
+_D
+20,160,0
+70,160,0
+70,185,0
+120,185,0
+
+100,0,0
+_.-LAYER
+_M
+HDXF_SECTIONS_B
+
+_.SECTIONPLANE
+_D
+70,120,0
+70,200,0
+
+100,0,0
+_.-LAYER
+_M
+HDXF_SECTIONS_C
+
+_.SECTIONPLANE
+_T
+_S
+0,0,0
+100,0,0
+_.SECTIONPLANE
+_T
+_B
+0,220,0
+100,220,0
+_.SECTIONPLANE
+_T
+_V
+0,400,0
+100,400,0
+;EXPECT SECTIONOBJECT SECTION_MANAGER SECTION_SETTINGS
+;SAVE sections
+_.CHPROP
+_L
+
+_LA
+HDXF_SECTIONS
+
+;SAVE sections layer_changed
+_.CHPROP
+_L
+
+_C
+1
+
+;SAVE sections color_changed
+_.MOVE
+_L
+
+0,0,0
+10,10,5
+;SAVE sections moved
+_.ROTATE
+_L
+
+0,0,0
+30
+;SAVE sections rotated
+_.MIRROR
+_L
+
+0,100
+100,100
+_N
+;SAVE sections mirrored
+_.ERASE
+_L
+
+;SAVE sections one_erased
+_.ERASE
+_ALL
+
+;SAVE sections all_erased

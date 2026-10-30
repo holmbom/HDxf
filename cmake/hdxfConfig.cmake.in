@@ -1,0 +1,9 @@
+@PACKAGE_INIT@
+
+# hdxf::hdxf (the library) and, when the package was built with it, hdxf::acis (the ACIS body builder).
+# HDxf has no dependencies besides the C++ standard library.
+include("${CMAKE_CURRENT_LIST_DIR}/hdxfTargets.cmake")
+
+set(hdxf_HAVE_ACIS @HDXF_BUILD_ACIS@)
+
+check_required_components(hdxf)

@@ -1,0 +1,3 @@
+# DXF test files are compared byte for byte — git must never touch their line endings
+*.dxf -text
+*.DXF -text

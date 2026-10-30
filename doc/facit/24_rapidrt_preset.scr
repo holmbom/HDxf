@@ -1,0 +1,15 @@
+; Run in a NEW EMPTY acad.dwt drawing. AutoCAD 2025, SCRIPT this file.
+; Changing a standard preset's documented system variables creates a native custom copy.
+; AutoCAD assigns its own name (High - Copy 0 in the tested English installation).
+(setvar "FILEDIA" 0)
+(setvar "CMDDIA" 0)
+(vl-load-com)
+(setq fx:base "C:/HDxf/doc/facit/")
+(defun fx:need (ok message) (if (not ok) (progn (princ (strcat "\nFEL: " message "\n")) (exit))))
+(defun fx:idle () (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (progn (command) (fx:need nil "Command did not finish. Inspect F2."))))
+(defun fx:save (theme / pair v path) (foreach pair '(("r12" "R12") ("2000" "2000") ("2004" "2004") ("2007" "2007") ("2010" "2010") ("2013" "2013") ("2018" "2018")) (setq v (cadr pair) path (strcat fx:base "acad_" (car pair) "_dxf_" theme ".dxf")) (command "_.SAVEAS" "DXF" "_V" v "16" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path)) (setq path (strcat fx:base "acad_" (car pair) "_dxf_" theme "_bin.dxf")) (command "_.SAVEAS" "DXF" "_V" v "_B" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path))))
+(defun fx:run (/ dd custom data) (fx:need (= 0 (vla-get-Count (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))))) "A new empty acad.dwt drawing is required") (setvar "OSMODE" 0) (setvar "TILEMODE" 1) (command "_.BOX" "0,0,0" "30,20" "20") (fx:idle) (command "_.-RENDERPRESETS" "_High") (fx:idle) (setvar "RENDERTARGET" 1) (setvar "RENDERLEVEL" 9) (setvar "RENDERTIME" 3) (setvar "RENDERLIGHTCALC" 1) (setq dd (dictsearch (namedobjdict) "ACAD_RENDER_RAPIDRT_SETTINGS")) (fx:need dd "No native RapidRT preset dictionary") (foreach g dd (if (= (car g) 350) (progn (setq data (entget (cdr g))) (if (and (= (cdr (assoc 0 data)) "RAPIDRTRENDERSETTINGS") (= (cdr (last data)) 0)) (setq custom (cdr (assoc 1 data))))))) (fx:need custom "No native custom RapidRT preset was created") (princ (strcat "\nCUSTOM RAPIDRT: " custom "\n")) (command "_.REGENALL") (fx:idle) (fx:save "rapidrt_preset"))
+(setq fx:result (vl-catch-all-apply 'fx:run nil))
+(setvar "FILEDIA" 1)
+(setvar "CMDDIA" 1)
+(if (vl-catch-all-error-p fx:result) (princ (strcat "\nFEL 24_rapidrt_preset: " (vl-catch-all-error-message fx:result) "\n")) (princ "\nKLAR 24_rapidrt_preset\n"))

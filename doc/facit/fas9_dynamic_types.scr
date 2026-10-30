@@ -1,0 +1,39 @@
+; fas9_dynamic_types.scr - step 9.13 of phase 9 (plan 2026-10-27-fas-9-typer.md, F9.9): the dynamic block parameters, grips, actions
+; and constraints that step 9.9 did not type. Run it once for each of AutoCAD 2025's own dynamic block drawings:
+;
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_dynamic_types.scr --input "<AutoCAD 2025>/Sample/en-us/Dynamic Blocks/<name>.dwg" --out doc/facit/dyntypes/<name>
+;
+; (<name>: Annotation - Imperial, Annotation - Metric, Architectural - Imperial, Architectural - Metric, Civil - Imperial, Civil - Metric,
+; Electrical - Imperial, Electrical - Metric, Mechanical - Imperial, Mechanical - Metric, Multileader Tools, Structural - Imperial,
+; Structural - Metric; spaces become underscores in the folder name). The core has no -BEDIT, BPARAMETER, BACTION, BCPARAMETER or
+; BAUTHORPALETTE ("Unknown command"), so a dynamic block cannot be authored headless; the AutoCAD-saved originals are the DWG samples
+; that ship with AutoCAD 2025 (Autodesk's own libraries of dynamic blocks, made in the Block Editor). The core opens the DWG and saves
+; it as R12 ... 2018 in ASCII and binary DXF; what it adds is the state after commands it has:
+;
+;   dyntypes           the drawing as AutoCAD saves it from the DWG: every dynamic block definition with its graph and its
+;                      parameters, grips, actions and constraints (BLOCKALIGNMENTPARAMETER/GRIP, BLOCKBASEPOINTPARAMETER,
+;                      BLOCKFLIPPARAMETER/GRIP/ACTION, BLOCKLOOKUPPARAMETER/GRIP/ACTION, BLOCKMOVEACTION, BLOCKPOINTPARAMETER,
+;                      BLOCKPOLARPARAMETER/GRIP, BLOCKPOLARSTRETCHACTION, BLOCKPROPERTIESTABLE/GRIP, BLOCKROTATIONPARAMETER/GRIP,
+;                      BLOCKROTATEACTION, BLOCKSTRETCHACTION, BLOCKARRAYACTION, BLOCKUSERPARAMETER, BLOCKXYPARAMETER/GRIP,
+;                      BLOCKHORIZONTAL/VERTICAL/RADIALCONSTRAINTPARAMETER, BLOCKPARAMDEPENDENCYBODY, ACDB_DYNAMICBLOCKPROXYNODE and
+;                      the nine types of step 9.9) and the INSERTs with their anonymous representations
+;   dyntypes erased    every object of the model space erased: the INSERTs and their representations go, the definitions stay
+;   dyntypes purged    the unused blocks purged: AutoCAD removes the definitions with their graphs, elements, constraints
+;                      dependencies and the representations (the cascade of B19)
+;
+; Not made here (ej testat, F9.9): a change of a parameter, an action or a grip by AutoCAD (the Block Editor is not in the core: no
+; dynamic property edit either), BLOCKALIGNEDCONSTRAINTPARAMETER, BLOCKLINEARCONSTRAINTPARAMETER, BLOCKDIAMETRICCONSTRAINTPARAMETER,
+; BLOCKANGULARCONSTRAINTPARAMETER and BLOCKANGULARCONSTRAINTPARAMETERENTITY (no AutoCAD sample has a record of them; the first two
+; are registered in the files' CLASSES), BLOCKPROPERTIESTABLEENTITY and BLOCKPROPERTIESTABLEGRIPENTITY (registered in CLASSES, no
+; record in any file), a value set of a rotation, polar or XY parameter with values (the group of a value is not shown).
+;EXPECT ACAD_EVALUATION_GRAPH BLOCKGRIPLOCATIONCOMPONENT ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION
+;SAVE dyntypes
+_.ERASE
+_ALL
+
+;SAVE dyntypes erased
+_.-PURGE
+_B
+*
+_N
+;SAVE dyntypes purged

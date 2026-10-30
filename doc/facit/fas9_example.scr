@@ -1,0 +1,29 @@
+; fas9_example.scr - the form of a phase 9 family's facit script (step 9.0). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_example.scr --out <directory>
+; which starts AutoCAD 2025's core on acad.dwt (a new empty drawing) and expands the two markers below. A family step
+; copies this form to doc/facit/fas9_<family>.scr and draws or changes what its F9 items ask for.
+;
+; Plain AutoCAD commands, one input per line, no LISP (the core has none). An empty line is Enter, as in AutoCAD's own
+; scripts; a line that starts with ; is a comment. The commands are the English ones with the underscore prefix.
+; A command the core does not have stops the script: the family step then calls that branch "ej testat" and names
+; the F9 id (plan 2026-10-27-fas-9-typer.md, Facit).
+;
+; ;SAVE <theme> [<change>]  saves the open drawing in R12, 2000, 2004, 2007, 2010, 2013 and 2018, ASCII and binary.
+;                           One change per pair: save the state, change one property, list or relation, save again
+;                           with a <change> name.
+; ;EXPECT <NAME> ...        the 2018 file must have a record of each name; without it the run is not a new facit.
+_.LINE
+0,0
+100,50
+
+_.CIRCLE
+50,50
+20
+;EXPECT LINE CIRCLE
+;SAVE example
+_.MOVE
+_L
+
+0,0
+10,10
+;SAVE example moved

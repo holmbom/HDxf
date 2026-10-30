@@ -1,0 +1,190 @@
+; fas9_assoc_core.scr - facit script of step 9.10 (F9.11 persistent subentities; the observed parts of F9.12): the associative
+; framework's network, actions, dependencies, parameters and bodies of the associative surfaces, and the persistent
+; subentity managers of surfaces and solids. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_assoc_core.scr
+; It starts from AutoCAD's own acad.dwt (a new empty drawing) and uses plain AutoCAD commands, no LISP (the core has
+; none). SURFACEASSOCIATIVITY 1 makes every surface remember how it was made (an ACDBASSOCNETWORK with one action per
+; surface, its dependencies on the profile and path curves, its parameters and its action body); DELOBJ 0 keeps the
+; profiles, so two actions can share one (a line extruded twice: two actions, one geometry).
+;
+; Files (acad_<version>_dxf_<theme>[_<change>][_bin].dxf, 2000 … 2018; the core cannot save R13/R14):
+;   assoc_core                       the drawing as drawn: a line extruded twice (two actions, one geometry), a closed polyline
+;                                    extruded as a surface, a revolve, a sweep, a loft, a plane surface
+;   assoc_core surface_erased        the second extrusion of the shared line erased (its action, parameters, dependencies and body
+;                                    go; the line and the first extrusion's action stay: B19 by AutoCAD itself)
+;   assoc_core profile_erased        the shared line erased
+;   assoc_core profile_moved         the shared line moved (the actions' geometry changes)
+;   assoc_solids                     the persistent subentity manager of solids: two boxes and a cylinder
+;   assoc_solids union               the two boxes united
+;
+; What AutoCAD 2025's core cannot do, and what is therefore "ej testat" (plan 2026-10-27-fas-9-typer.md, F9.11, F9.12):
+;   - ACDBASSOCALIGNEDDIMACTIONBODY and ACDBASSOCOSNAPPOINTREFACTIONPARAM: the core's dimension with endpoint snaps makes a
+;     DIMASSOC (step 9.17), not an action body; the only AutoCAD files with the two are the Autodesk example drawing saved in
+;     2007 … 2018 (build/test-data/libre/example_*.dxf)
+;   - the persistent subentity manager's history entries (fillet, chamfer or Boolean history of a solid, a surface made from the
+;     edges of another): FILLETEDGE, CHAMFEREDGE and SOLIDEDIT pick faces and edges on the screen, which the core has not; the
+;     corpus' managers with entries (Surface_2004, example_*, acad_*_surfaces.dxf, acad_2013_dxf_solids.dxf) are read as records
+;     that stay as they were
+;   - an edge, face or vertex "added" to or "removed" from a manager by an edit of a solid: the same
+; The plain surface and solid commands below do work.
+_.SURFACEASSOCIATIVITY
+1
+_.SURFACEMODELINGMODE
+0
+_.DELOBJ
+0
+_.ISOLINES
+8
+_.ZOOM
+_Window
+-20,-20
+320,100
+; A line extruded twice along a direction (its footprint is then larger than the line: a window selects the line alone)
+_.LINE
+0,0,0
+10,0,0
+
+_.EXTRUDE
+_L
+
+_Direction
+0,0,0
+80,0,30
+_.EXTRUDE
+_P
+
+_Direction
+0,0,0
+120,0,40
+; A closed polyline extruded as a surface (a taper)
+_.PLINE
+0,60
+20,60
+20,80
+0,80
+_Close
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+_Taper
+5
+15
+; A revolve of a line
+_.LINE
+120,0,0
+135,10,30
+
+_.REVOLVE
+_L
+
+_Z
+300
+; A sweep of a line along a 3D polyline
+_.LINE
+160,0,0
+170,0,0
+
+_.3DPOLY
+165,0,0
+180,20,20
+190,40,30
+
+_.SWEEP
+_Window
+158,-1
+172,1
+
+_L
+; A loft of three circles
+_.CIRCLE
+180,70,0
+12
+_.CIRCLE
+185,70,20
+8
+_.CIRCLE
+180,75,40
+15
+_.LOFT
+_MOde
+_SUrface
+_Window
+160,55
+200,95
+
+
+; A plane surface from a closed polyline
+_.PLINE
+260,0
+300,0
+300,30
+260,30
+_Close
+_.PLANESURF
+_Object
+_L
+
+;EXPECT ACDBASSOCNETWORK ACDBASSOCACTION ACDBASSOCDEPENDENCY ACDBASSOCEDGEACTIONPARAM ACDBASSOCEXTRUDEDSURFACEACTIONBODY
+;SAVE assoc_core
+; Each change is made after an UNDO mark and taken back to it (a plain U would undo the SAVEAS)
+_.UNDO
+_Mark
+; The second extrusion of the shared line erased: the window takes both surfaces and the line, the removal leaves the second
+_.ERASE
+_Window
+-1,-1
+135,5
+_Remove
+_Window
+-1,-1
+125,5
+
+;SAVE assoc_core surface_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; The shared line erased (a window around it: its own footprint is the only one that small)
+_.ERASE
+_Window
+-1,-1
+11,1
+
+;SAVE assoc_core profile_erased
+_.UNDO
+_Back
+_.UNDO
+_Mark
+; The shared line moved
+_.MOVE
+_Window
+-1,-1
+11,1
+
+0,0
+0,5
+;SAVE assoc_core profile_moved
+_.UNDO
+_Back
+; Solids: two boxes and a cylinder (the manager of a drawing with solids), then the boxes united
+_.SOLIDHIST
+1
+_.BOX
+300,100,0
+310,120,30
+_.BOX
+305,105,5
+315,125,35
+_.CYLINDER
+330,110,0
+4
+50
+;SAVE assoc_solids
+_.UNION
+_Window
+299,99
+316,126
+
+;SAVE assoc_solids union

@@ -1,0 +1,22 @@
+; fas9_modeldoc_styles.scr - facit for step 9.12 (ACDBDETAILVIEWSTYLE and ACDBSECTIONVIEWSTYLE; F9.26). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_modeldoc_styles.scr
+; (AutoCAD 2025's core on acad.dwt, a new empty drawing). Plain AutoCAD commands, no LISP; see fas9_example.scr.
+;
+; The template's own styles are the facit: acad.dwt has the detail view style Imperial24 and the section view style Imperial24
+; (current: CVIEWDETAILSTYLE, CVIEWSECTIONSTYLE). Every drawing AutoCAD 2025 saves has them (doc/facit/acad_<ver>_dxf_basic.dxf and
+; the corpus' 800 records of each kind, F9.26): all five parts of both, the colors from 2004 on (none in 2000), 300 and 90 of the
+; base in 2018 and the XRECORD ACAD_XREC_ROUNDTRIP of the extension dictionary before.
+;
+; What the core does: -PURGE has the options DEtailviewstyles and SEctionviewstyles, but the template's style of each kind is the
+; current one (CVIEWDETAILSTYLE, CVIEWSECTIONSTYLE) and so referenced: AutoCAD answers "No unreferenced Detail view styles found"
+; (and the same for Section view styles; this script's first run, run log of 2026-10-28), so no style can be removed and no file is
+; saved for it: the record AutoCAD keeps is the one saved below.
+;
+; Not made here (no command in the core; plan 9.12, "Ej testat", F9.26): VIEWDETAILSTYLE, VIEWSECTIONSTYLE and their command
+; line forms are "Unknown command" in V.72.0.0 (they are dialogs), VIEWBASE needs Inventor Server and fails to load, and the system
+; variables only choose among the styles that exist. So no AutoCAD file has: a changed identifier, line, label or hatch (and so a
+; hatch with another number of angles than six), a style with an arrow symbol of its own (a non-zero arrow handle: 340 is 0 in
+; every file), a style with another text style or linetype than Standard and Continuous, a second style of a kind, a style
+; made from a view style of a drawing view. The grammar of those branches is the grammar of the records the files have.
+;EXPECT ACDBDETAILVIEWSTYLE ACDBSECTIONVIEWSTYLE
+;SAVE modeldoc_styles

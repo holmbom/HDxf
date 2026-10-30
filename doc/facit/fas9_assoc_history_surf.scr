@@ -1,0 +1,309 @@
+; fas9_assoc_history_surf.scr - facit script of step 9.15 (F9.11, Opus): the history entries of kind 8 (SURFTRIM) and kind 10
+; (SURFFILLET) in the persistent subentity manager, in more forms than fas9_assoc_extended.scr and fas9_surfaces.scr have.
+; Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_assoc_history_surf.scr
+; It starts from AutoCAD's own acad.dwt (a new empty drawing) and uses plain AutoCAD commands, no LISP (the core has none).
+; Every operation is drawn in a cell of its own, so a pick finds one object. Files: acad_<ver>_dxf_history_surf[_bin].dxf.
+;
+; SURFTRIM (top view, planes at z = 0):
+;   T1  two planes side by side trimmed by one circle that crosses both (two surfaces in one trim)
+;   T2  a plane cut in two by a line that crosses it, one side trimmed away
+;   T3  a plane trimmed by a vertical surface that crosses it (a surface as the cutting edge)
+;   T4  a plane trimmed by two circles in one trim (two cutting curves, two areas)
+;   T5  two crossing vertical walls, each trimmed by the other in one trim
+; SURFFILLET (south-west isometric view):
+;   F1  two extruded walls at a right angle, radius 5 (as fas9_assoc_extended.scr)
+;   F2  two walls, radius 3, Trim surface No
+;   F3  a horizontal plane and a vertical wall standing on its edge, radius 4
+;   F4  a plane and a wall extruded from a two-segment polyline (one surface of two faces), radius 2
+;   F5  two walls at an oblique angle, radius 6
+;EXPECT ACDBASSOCPERSSUBENTMANAGER
+_.SURFACEASSOCIATIVITY
+1
+_.SURFACEMODELINGMODE
+0
+_.DELOBJ
+0
+_.SOLIDHIST
+1
+_.OSMODE
+0
+_.ISOLINES
+8
+_.-VIEW
+_Top
+; ---- T1: two planes, one circle ----
+_.ZOOM
+_Window
+-10,-20
+90,50
+_.PLANESURF
+0,0,0
+40,30
+_.PLANESURF
+40,0,0
+80,30
+_.CIRCLE
+40,15,0
+10
+_.SURFTRIM
+0,15
+80,15
+
+47.0711,22.0711
+
+35,15
+45,15
+
+; ---- T2: a plane and a line across it ----
+_.ZOOM
+_Window
+110,-20
+170,50
+_.PLANESURF
+120,0,0
+160,30
+_.LINE
+140,-5,0
+140,35,0
+
+_.SURFTRIM
+120,15
+
+140,-3
+
+150,15
+
+; ---- T4: a plane and two circles ----
+_.ZOOM
+_Window
+330,-20
+390,50
+_.PLANESURF
+340,0,0
+380,30
+_.CIRCLE
+350,15,0
+4
+_.CIRCLE
+370,15,0
+4
+_.SURFTRIM
+340,15
+
+354,15
+374,15
+
+350,15
+370,15
+
+; ---- T3, T5 and the fillets (south-west isometric view) ----
+_.-VIEW
+_SWIso
+; T3 (in this view: a pick in the top view finds the profile line, not the surface): a plane and a vertical surface across it
+_.ZOOM
+C
+240,15,0
+70
+_.PLANESURF
+220,0,0
+260,30
+_.LINE
+240,-5,-10
+240,35,-10
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+20
+_.SURFTRIM
+220,15,0
+
+240,-5,10
+
+250,15,0
+
+; T5: two crossing walls, each trimmed by the other
+_.ZOOM
+C
+560,15,10
+70
+_.LINE
+540,15,0
+580,15,0
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+20
+_.LINE
+560,0,0
+560,30,0
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+20
+_.SURFTRIM
+545,15,20
+560,5,20
+
+575,15,20
+560,25,20
+
+575,15,10
+560,25,10
+
+; F1: two walls at a right angle, radius 5
+_.ZOOM
+C
+20,215,15
+70
+_.LINE
+0,200
+40,200
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+30
+_.LINE
+40,200
+40,230
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+30
+_.SURFFILLET
+_Radius
+5
+20,200,30
+40,215,30
+
+; F2: two walls, radius 3, no trim
+_.ZOOM
+C
+120,215,15
+70
+_.LINE
+100,200
+140,200
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+30
+_.LINE
+140,200
+140,230
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+30
+_.SURFFILLET
+_Radius
+3
+_Trim
+_No
+120,200,30
+140,215,30
+
+; F3: a plane and a wall on its edge, radius 4
+_.ZOOM
+C
+220,215,10
+70
+_.PLANESURF
+200,200,0
+240,230
+_.LINE
+200,230
+240,230
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+20
+_.SURFFILLET
+_Radius
+4
+_Trim
+_Yes
+220,200,0
+220,230,20
+
+; F4: a plane and a wall of two faces, radius 2
+_.ZOOM
+C
+320,215,10
+70
+_.PLANESURF
+300,200,0
+340,230
+_.PLINE
+300,230
+340,230
+340,200
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+20
+_.SURFFILLET
+_Radius
+2
+320,200,0
+320,230,20
+
+; F5: two walls at an oblique angle, radius 6
+_.ZOOM
+C
+420,215,15
+70
+_.LINE
+400,200
+440,200
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+30
+_.LINE
+440,200
+460,230
+
+_.EXTRUDE
+_MOde
+_SUrface
+_L
+
+30
+_.SURFFILLET
+_Radius
+6
+420,200,30
+450,215,30
+
+;SAVE history_surf

@@ -1,0 +1,184 @@
+; fas9_cannoscale.scr - facit of 9.S (Codex 17, plan 9.17: the extents of the representation at the current annotation scale).
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_cannoscale.scr
+; starts AutoCAD 2025's core on acad.dwt (a new empty drawing). Plain AutoCAD commands, no LISP (see fas9_example.scr).
+;
+; The drawing of fas9_contexts.scr as it is saved there (annotative TEXT, MTEXT, the dimensions, DIMJOGGED, DIMARC, LEADER, hatches and an
+; annotative block's INSERT, each with the contexts 1:1 (the default), 1:2 and 1:5), then only the current annotation scale changes:
+;   cannoscale            CANNOSCALE 1:1 (the default contexts: the entities' own fields)
+;   cannoscale 1_2        CANNOSCALE HDXF_1_2, REGENALL: $EXTMIN/$EXTMAX of every object drawn by its 1:2 context
+;   cannoscale 1_5        CANNOSCALE HDXF_1_5, REGENALL
+; ANNOAUTOSCALE stays 0: no context is added (unlike fas9_contexts' autoscale, which also adds a 1:10 context to every object).
+_.ANNOALLVISIBLE
+1
+_.ANNOAUTOSCALE
+0
+_.-SCALELISTEDIT
+_Add
+HDXF_1_2
+1:2
+_Exit
+_.-SCALELISTEDIT
+_Add
+HDXF_1_5
+1:5
+_Exit
+_.-STYLE
+HDXF_ANNO
+txt
+_Annotative
+_Yes
+_No
+3
+1
+0
+_No
+_No
+_No
+_.-DIMSTYLE
+_Annotative
+_Yes
+HDXF_DIM
+
+
+
+_.TEXT
+0,0
+0
+Annotative TEXT
+_.TEXT
+0,10
+0
+Annotative TEXT two
+_.-MTEXT
+0,30
+_W
+60
+60,40
+Annotative MTEXT
+
+_.LINE
+0,60
+80,60
+80,110
+0,60
+
+_.CIRCLE
+30,150
+20
+_.ARC
+_C
+150,150
+170,150
+150,170
+_.ZOOM
+_E
+_.DIMLINEAR
+
+40,60
+40,50
+_.DIMALIGNED
+_end
+0,60
+_end
+80,110
+-15,100
+_.DIMANGULAR
+80,85
+40,85
+50,70
+_.DIMRADIUS
+50,150
+65,165
+_.DIMDIAMETER
+30,170
+20,160
+_.DIMORDINATE
+_end
+80,110
+_Xdatum
+120,140
+_.DIMJOGGED
+50,150
+10,130
+0,140
+-20,135
+_.DIMARC
+164.1421356,164.1421356
+160,180
+_.LEADER
+200,100
+220,130
+
+Annotative LEADER
+
+_.MLEADER
+260,100
+285,120
+MLEADER (style not annotative)
+_.-HATCH
+_Properties
+ANSI31
+2
+0
+_ANnotative
+_Yes
+_Select
+50,150
+
+
+_.-HATCH
+_Properties
+ACAD_ISO02W100
+2
+0
+_ANnotative
+_Yes
+70,75
+
+_.-BLOCK
+HDXF_ANNO_BLOCK
+_Annotative
+_Yes
+_No
+300,0,0
+_C
+295,-5
+315,5
+
+_.INSERT
+HDXF_ANNO_BLOCK
+350,20
+1
+1
+0
+_.ZOOM
+_E
+_.-OBJECTSCALE
+_ALL
+
+_Add
+HDXF_1_2
+
+_.-OBJECTSCALE
+_ALL
+
+_Add
+HDXF_1_5
+
+;EXPECT ACDB_TEXTOBJECTCONTEXTDATA_CLASS
+_.REGENALL
+_.ZOOM
+_E
+;SAVE cannoscale
+_.CANNOSCALE
+HDXF_1_2
+_.REGENALL
+_.ZOOM
+_E
+;SAVE cannoscale 1_2
+_.CANNOSCALE
+HDXF_1_5
+_.REGENALL
+_.ZOOM
+_E
+;SAVE cannoscale 1_5

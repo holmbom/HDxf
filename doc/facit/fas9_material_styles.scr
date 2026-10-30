@@ -1,0 +1,203 @@
+; fas9_material_styles.scr - facit for step 9.7 (MATERIAL, the VISUALSTYLE forms and what uses them; F9.6, F9.7). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_material_styles.scr --input doc/facit/acad_2018_dxf_native_records.dxf
+; (AutoCAD 2025's core; the input is AutoCAD's own DXF from 21_native_records.scr, which has the material HDXF_SIX_MAPS with all
+; six maps and non-identity mapper transforms and the standard materials ByBlock, ByLayer and Global). Plain AutoCAD commands, no
+; LISP; see fas9_example.scr.
+;
+; The core has no command that makes or edits a material (-MATERIALS, MATERIALATTACH, MATERIALMAP, MATBROWSEROPEN, -RMAT and
+; MATERIALASSIGN are "Unknown command" in V.72.0.0): the material comes in with the input drawing, and the core attaches it
+; (-LAYER MATerial, CHPROP Material) and purges it (-PURGE MAterials). A change of a material's channel or procedure needs the GUI:
+; the pair doc/facit/acad_*_dxf_native_records_material_changed.dxf (21_native_records.scr) is the only one (plan 9.7, "Ej testat",
+; F9.6: procedural materials, the 2007 normal map and the modern channels have no AutoCAD file at all).
+;
+; Visual styles: the system variables VSFACESTYLE ... VSSHADOWS change the current style and -VISUALSTYLES Saveas keeps the result
+; under a name; one style is made with the face settings, one with the edge settings, one with the display settings; Current puts one
+; in the model space viewport (VPORT 348) and in a saved view (VIEW 348); Rename and Delete follow. One style is current in a layout
+; viewport (VIEWPORT 348). The core has no screen, so a viewport is made with MVIEW and made current with MSPACE.
+;
+; Not made here (no command in the core; plan 9.7, "Ej testat"): a visual style on an entity of its own (full, face and edge
+; style, the 349/350 groups: no AutoCAD file has them; 348 is the VIEWPORT's, VPORT's and VIEW's), SUNSTUDY, a material with a
+; procedure or a normal map, a channel changed by the program.
+_.-LAYER
+_N
+HDXF_MAT_A,HDXF_MAT_B
+
+_.-LAYER
+_MAT
+HDXF_SIX_MAPS
+HDXF_MAT_A
+
+_.-LAYER
+_S
+HDXF_MAT_A
+
+_.LINE
+0,0
+100,50
+
+_.CIRCLE
+50,50
+20
+_.CHPROP
+_L
+
+_M
+HDXF_SIX_MAPS
+
+_.-LAYER
+_S
+HDXF_MAT_B
+
+_.LINE
+0,100
+100,150
+
+_.CHPROP
+_L
+
+_M
+Global
+
+_.-LAYER
+_S
+0
+
+_.LINE
+0,200
+100,250
+
+_.CHPROP
+_L
+
+_M
+ByBlock
+
+;EXPECT MATERIAL VISUALSTYLE
+;SAVE materials
+_.ZOOM
+_E
+_.CHPROP
+_C
+40,30
+60,70
+
+_M
+ByLayer
+
+;SAVE materials entity_changed
+_.-LAYER
+_MAT
+Global
+HDXF_MAT_A
+
+;SAVE materials layer_changed
+_.CHPROP
+_ALL
+
+_M
+ByLayer
+
+_.-PURGE
+_MA
+HDXF_SIX_MAPS
+_N
+;SAVE materials purged
+; ---- visual styles ----
+_.VSFACESTYLE
+2
+_.VSFACECOLORMODE
+3
+_.VSFACEOPACITY
+50
+_.VSFACEHIGHLIGHT
+20
+_.VSMONOCOLOR
+RGB:200,50,50
+_.VSLIGHTINGQUALITY
+2
+_.-VISUALSTYLES
+_S
+HDXF_FACES
+_.VSEDGES
+2
+_.VSEDGECOLOR
+RGB:0,0,255
+_.VSEDGEJITTER
+3
+_.VSEDGEOVERHANG
+6
+_.VSEDGESMOOTH
+60
+_.VSOBSCUREDEDGES
+1
+_.VSOBSCUREDCOLOR
+3
+_.VSOBSCUREDLTYPE
+3
+_.VSINTERSECTIONEDGES
+1
+_.VSINTERSECTIONCOLOR
+2
+_.VSINTERSECTIONLTYPE
+2
+_.VSSILHEDGES
+1
+_.VSSILHWIDTH
+3
+_.VSHALOGAP
+5
+_.VSHIDEPRECISION
+1
+_.-VISUALSTYLES
+_S
+HDXF_EDGES
+_.VSMATERIALMODE
+2
+_.VSSHADOWS
+1
+_.VSBACKGROUNDS
+0
+_.VSFACESTYLE
+1
+_.VSEDGES
+1
+_.-VISUALSTYLES
+_S
+HDXF_DISPLAY
+_.-VISUALSTYLES
+_C
+_O
+HDXF_FACES
+_.-VIEW
+_S
+HDXF_VIEW
+;SAVE visual_styles
+_.-VISUALSTYLES
+_R
+HDXF_FACES
+HDXF_FACES2
+;SAVE visual_styles renamed
+_.-VISUALSTYLES
+_C
+_O
+HDXF_EDGES
+;SAVE visual_styles current_changed
+_.-VISUALSTYLES
+_D
+HDXF_DISPLAY
+_Y
+;SAVE visual_styles deleted
+_.TILEMODE
+0
+_.MVIEW
+10,10
+150,100
+_.MSPACE
+_.-VISUALSTYLES
+_C
+_O
+HDXF_EDGES
+_.PSPACE
+_.TILEMODE
+1
+;SAVE visual_styles viewport

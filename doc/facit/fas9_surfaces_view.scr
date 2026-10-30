@@ -1,0 +1,97 @@
+; fas9_surfaces_view.scr - facit script of step 9.16, second round (F9.18): what the view and VIEWRES at the save do to the isoline
+;   proxy graphics of the spline surfaces. Run it with  python -I tools/fas9_facit_run.py doc/facit/fas9_surfaces_view.scr
+; Two extruded splines (one and several spans) and a plain cylinder are drawn once; the drawing is then saved in each view (ZOOM)
+; and with each VIEWRES (circle zoom percent) with nothing else changed: surfaces_view [<change>].
+_.SURFACEASSOCIATIVITY
+0
+_.SURFACEMODELINGMODE
+0
+_.DELOBJ
+0
+_.ISOLINES
+8
+_.SURFU
+6
+_.SURFV
+6
+_.SPLINE
+0,0,0
+10,15,0
+20,0,0
+30,15,0
+40,0,0
+
+
+
+_.EXTRUDE
+_L
+
+20
+_.SPLINE
+120,0,0
+125,8,0
+130,0,0
+135,8,0
+140,0,0
+145,8,0
+150,0,0
+155,8,0
+160,0,0
+
+
+
+_.EXTRUDE
+_L
+
+20
+_.CIRCLE
+240,10,0
+10
+_.EXTRUDE
+_L
+
+20
+_.ZOOM
+_Window
+-10,-20
+270,60
+;SAVE surfaces_view
+_.VIEWRES
+_Yes
+100
+;SAVE surfaces_view viewres100
+_.VIEWRES
+_Yes
+300
+;SAVE surfaces_view viewres300
+_.VIEWRES
+_Yes
+3000
+;SAVE surfaces_view viewres3000
+_.VIEWRES
+_Yes
+10000
+;SAVE surfaces_view viewres10000
+_.VIEWRES
+_Yes
+1000
+_.ZOOM
+_Window
+-10,-20
+270,60
+;SAVE surfaces_view zoom_a
+_.ZOOM
+_Window
+-10,-20
+140,40
+;SAVE surfaces_view zoom_b
+_.ZOOM
+_Window
+-10,-20
+60,25
+;SAVE surfaces_view zoom_c
+_.ZOOM
+_Window
+-300,-300
+600,300
+;SAVE surfaces_view zoom_d

@@ -1,0 +1,226 @@
+; fas9_contexts.scr - facit of step 9.17 (F9.19: the annotation contexts, ObjectContext/AnnotScale bases; F9.8's DIMASSOC part is in
+; fas9_special_dimensions.scr).
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_contexts.scr
+; starts AutoCAD 2025's core on acad.dwt (a new empty drawing). Plain AutoCAD commands, no LISP (see fas9_example.scr).
+;
+; What is made: an ANNOTATIVE text style (-STYLE _Annotative) and an ANNOTATIVE dimension style (-DIMSTYLE _Annotative), two extra
+; scales (-SCALELISTEDIT: HDXF_1_2 and HDXF_1_5), CANNOSCALE 1:1, and annotative TEXT (one rotated), MTEXT, linear, aligned, angular,
+; radius, diameter and ordinate dimensions, DIMJOGGED, DIMARC, LEADER, MLEADER, a hatch (HPANNOTATIVE 1: HATCHSCALE and HATCHVIEW
+; contexts; one with a dashed pattern), and an annotative block with its INSERT (BLKREF). -OBJECTSCALE adds the two scales to every
+; annotative object: each has three contexts (1:1 the default, 1:2, 1:5).
+;   contexts                      the drawing so
+;   contexts rotated              the second TEXT rotated 30 degrees (the contexts of the other scales)
+;   contexts leader_stretched     a vertex of the LEADER moved (its contexts' point lists)
+;   contexts autoscale            ANNOAUTOSCALE 1 and CANNOSCALE HDXF_1_5 after a scale 1:10 was added to the list: what AutoCAD adds
+;   contexts scale_removed        -OBJECTSCALE _Delete HDXF_1_5 from every object (the 1:5 contexts and their dictionary entries go)
+;   contexts scale_list_deleted   -SCALELISTEDIT _Delete HDXF_1_2 (a scale the objects still use) and _Delete of the unused one
+; MLEADER is made with the command (text on the command line); its style Standard is not annotative and the core has no MLEADERSTYLE command
+; (-MLEADERSTYLE is unknown to it), so its contexts are only in Erik's acad_<version>_dxf_annotative*.dxf (setpropertyvalue Annotative).
+; Not made here (plan 9.17, "Ej testat", F9.19): ACDB_ANNOTSCALEOBJECTCONTEXTDATA_CLASS as a record of its own (AutoCAD writes the
+; base only inside the concrete classes: it has no 0 record in any file), the MTEXTATTRIBUTE and FCF contexts are in Erik's
+; acad_<version>_dxf_annotative*.dxf (14_annotative.scr: the core's ATTDEF has no multiple-line attribute and its TOLERANCE is a dialog),
+; an annotative object in paper space and in a block (BLKREF inside a block), grips for a context's own point.
+_.ANNOALLVISIBLE
+1
+_.ANNOAUTOSCALE
+0
+_.-SCALELISTEDIT
+_Add
+HDXF_1_2
+1:2
+_Exit
+_.-SCALELISTEDIT
+_Add
+HDXF_1_5
+1:5
+_Exit
+_.-STYLE
+HDXF_ANNO
+txt
+_Annotative
+_Yes
+_No
+3
+1
+0
+_No
+_No
+_No
+_.-DIMSTYLE
+_Annotative
+_Yes
+HDXF_DIM
+
+
+
+_.TEXT
+0,0
+0
+Annotative TEXT
+_.TEXT
+0,10
+0
+Annotative TEXT two
+_.-MTEXT
+0,30
+_W
+60
+60,40
+Annotative MTEXT
+
+_.LINE
+0,60
+80,60
+80,110
+0,60
+
+_.CIRCLE
+30,150
+20
+_.ARC
+_C
+150,150
+170,150
+150,170
+_.ZOOM
+_E
+_.DIMLINEAR
+
+40,60
+40,50
+_.DIMALIGNED
+_end
+0,60
+_end
+80,110
+-15,100
+_.DIMANGULAR
+80,85
+40,85
+50,70
+_.DIMRADIUS
+50,150
+65,165
+_.DIMDIAMETER
+30,170
+20,160
+_.DIMORDINATE
+_end
+80,110
+_Xdatum
+120,140
+_.DIMJOGGED
+50,150
+10,130
+0,140
+-20,135
+_.DIMARC
+164.1421356,164.1421356
+160,180
+_.LEADER
+200,100
+220,130
+
+Annotative LEADER
+
+_.MLEADER
+260,100
+285,120
+MLEADER (style not annotative)
+_.-HATCH
+_Properties
+ANSI31
+2
+0
+_ANnotative
+_Yes
+_Select
+50,150
+
+
+_.-HATCH
+_Properties
+ACAD_ISO02W100
+2
+0
+_ANnotative
+_Yes
+70,75
+
+_.-BLOCK
+HDXF_ANNO_BLOCK
+_Annotative
+_Yes
+_No
+300,0,0
+_C
+295,-5
+315,5
+
+_.INSERT
+HDXF_ANNO_BLOCK
+350,20
+1
+1
+0
+_.ZOOM
+_E
+_.-OBJECTSCALE
+_ALL
+
+_Add
+HDXF_1_2
+
+_.-OBJECTSCALE
+_ALL
+
+_Add
+HDXF_1_5
+
+;EXPECT ACDB_TEXTOBJECTCONTEXTDATA_CLASS
+;SAVE contexts
+_.ROTATE
+5,10
+
+5,10
+30
+_.ZOOM
+_E
+;SAVE contexts rotated
+_.STRETCH
+_C
+195,95
+225,135
+
+200,100
+205,110
+_.ZOOM
+_E
+;SAVE contexts leader_stretched
+_.-SCALELISTEDIT
+_Add
+HDXF_1_10
+1:10
+_Exit
+_.ANNOAUTOSCALE
+1
+_.CANNOSCALE
+HDXF_1_10
+_.REGENALL
+;SAVE contexts autoscale
+_.ANNOAUTOSCALE
+0
+_.-OBJECTSCALE
+_ALL
+
+_Delete
+HDXF_1_5
+
+;SAVE contexts scale_removed
+_.-SCALELISTEDIT
+_Delete
+HDXF_1_2
+_Delete
+HDXF_1_10
+_Exit
+;SAVE contexts scale_list_deleted

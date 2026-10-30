@@ -1,0 +1,87 @@
+; fas9_underlays.scr - facit script of step 9.6 (F9.3 underlays: PDFUNDERLAY/PDFDEFINITION, DWFUNDERLAY/DWFDEFINITION,
+; DGNUNDERLAY/DGNDEFINITION). Run it with
+;   python -I tools/fas9_prune_entities.py build/test-data/acadsharp/sample_AC1032_ascii.dxf build/fas9_underlays_input.dxf PDFUNDERLAY VIEWPORT 3DSOLID REGION MESH
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_underlays.scr --input build/fas9_underlays_input.dxf
+; The drawing it starts from is ACadSharp's sample_AC1032_ascii.dxf (an AutoCAD 2018 file, test/data/manifest.cmake) with every entity
+; but its PDFUNDERLAY (handle D07, one definition D06 `..\pdf-definition.pdf`, page 1, insertion 16.2869,15) removed, so a point pick
+; at 16.2869,15 is the underlay alone. AutoCAD 2025's core reads that file and saves it in every version it can, so the records are
+; AutoCAD's own.
+;
+; What AutoCAD 2025's core cannot do, and what is therefore "ej testat" (plan 2026-10-27-fas-9-typer.md, F9.3):
+;   -PDFATTACH, -DWFATTACH, -DGNATTACH (and PDFATTACH/DWFATTACH/DGNATTACH, with FILEDIA 0 or 1): the core ends with an access violation
+;     (exit code 0xC0000005) as soon as the command starts, with or without a file name, also after ARX-loading AcDgnUI.crx; so
+;     no DWFUNDERLAY/DWFDEFINITION/DGNUNDERLAY/DGNDEFINITION is ever made, and the PDF underlay is not a fresh attachment of a real
+;     PDF but the sample's (its file `pdf-definition.pdf` is not there: "Underlay Definition Corner Points:" is empty).
+;   -PDFCLIP, -DWFCLIP, -DGNCLIP (unknown commands in the core): rectangle/polygon clip, inside/outside clip and the clip's 11/21
+;     points are not made; the sample's flags are 280 = 3 (clipping on, underlay on) with no boundary.
+;   DWF/DGN source files (EXPORTDWF and -DGNEXPORT give nothing without a display), and a real PDF page outline for the
+;     proxy graphics (the plotted PDF `src_a.pdf` of -PLOT "DWG To PDF.pc3" works but cannot be attached, see above).
+;   An underlay in paper space: COPYTOLAYOUT is not in the core and CHSPACE ends it with an access violation (the
+;     underlay's own paper space cannot be made); a block's INSERT (-BLOCK, -INSERT) works and is below.
+; Plain AutoCAD commands, no LISP. ;SAVE saves R12, 2000, 2004, 2007, 2010, 2013 and 2018, ASCII and binary.
+;EXPECT PDFUNDERLAY PDFDEFINITION
+;SAVE underlay_pdf
+; A second instance that shares the definition
+_.COPY
+16.2869,15
+
+0,0
+100,50
+;SAVE underlay_pdf copied
+; Rotation of the first instance (50), then a scale (41/42/43), then a normal other than Z (210)
+_.ROTATE
+16.2869,15
+
+16.2869,15
+30
+;SAVE underlay_pdf rotated
+_.SCALE
+16.2869,15
+
+16.2869,15
+2
+;SAVE underlay_pdf scaled
+_.ROTATE3D
+16.2869,15
+
+_X
+16.2869,15,0
+90
+;SAVE underlay_pdf normal
+; Mirror of the second instance (the source is erased: the mirrored one stands at x 300 - 116.2869)
+_.MIRROR
+116.2869,65
+
+150,0
+150,10
+_Y
+;SAVE underlay_pdf mirrored
+; Erase one instance: the definition (and its dictionary entry) stays for the other
+_.ERASE
+183.7131,65
+
+;SAVE underlay_pdf instance_erased
+; The last instance goes into a block, which is inserted scaled by 2 and turned 45 degrees: the underlay is the block's entity,
+; the INSERT carries the transform
+_.-BLOCK
+ULBLK
+0,0,0
+16.2869,15
+
+_.-INSERT
+ULBLK
+200,0,0
+2
+2
+45
+;SAVE underlay_pdf in_block
+; Erase the INSERT, then purge: what AutoCAD does with the definition and ACAD_PDFDEFINITIONS
+_.ERASE
+_L
+
+;SAVE underlay_pdf all_erased
+_.-PURGE
+_A
+*
+_N
+;SAVE underlay_pdf purged

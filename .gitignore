@@ -1,0 +1,26 @@
+# Every build directory (build, build-msvc, …), never in a commit
+build*/
+.claude/
+
+# Output of generate_test_dxf when run from the repo root
+/test_r12.dxf
+/test_r12_bin.dxf
+
+# AutoCAD facit made by the scripts in doc/facit/ (Erik makes them locally, not in git)
+doc/facit/*.dxf
+doc/facit/index_source.dwg
+doc/facit/surface_body_probe.sat
+doc/facit/*.dwl
+doc/facit/*.dwl2
+doc/facit/web/
+
+# Phase 9's facit runs (tools/fas9_facit_run.py): the log, the core's output and the expanded scripts; Python caches
+doc/facit/fas9_facit_log.csv
+doc/facit/*.run.log
+doc/facit/*.expanded.scr
+doc/facit/*.log
+doc/facit/fas9_*.dwg
+__pycache__/
+
+# Step 9.13: the facit of AutoCAD 2025's dynamic block samples (one folder per sample drawing)
+doc/facit/dyntypes/

@@ -1,0 +1,203 @@
+; fas9_assoc_manager.scr - facit script of step 9.15 for the persistent subentity managers' history entries (F9.11: the
+; "extra or removed edge, face or vertex before and after" pairs that step 9.10 could not make). Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_assoc_manager.scr
+; It starts from AutoCAD's own acad.dwt (a new empty drawing) and uses plain AutoCAD commands, no LISP (the core has none).
+; SOLIDHIST 1 makes every solid keep its history and the drawing's persistent subentity manager (ACDBASSOCPERSSUBENTMANAGER from
+; 2013, ACDBPERSSUBENTMANAGER before) a history entry for every step: the drawing is built one operation at a time and saved after
+; each (`;SAVE history <operation>`), so the entries one operation adds are the difference of two consecutive files. The core picks
+; edges with a typed point in an isometric view (the same pick as a click), which is what FILLETEDGE and CHAMFEREDGE need.
+;
+; Operations, in the order they are made: BOX, CYLINDER, SPHERE, CONE, WEDGE, TORUS, PYRAMID; FILLETEDGE of one edge of the box,
+; of a second edge, CHAMFEREDGE of the cylinder's circle; UNION, SUBTRACT and INTERSECT of two solids each; EXTRUDE, REVOLVE
+; and SWEEP of a closed profile into a solid; SLICE.
+_.SOLIDHIST
+1
+_.OSMODE
+0
+_.ISOLINES
+8
+_.-VIEW
+_SWIso
+_.ZOOM
+C
+20,15,10
+80
+_.BOX
+0,0,0
+40,30
+20
+;SAVE history box
+_.ZOOM
+C
+100,15,10
+60
+_.CYLINDER
+100,15,0
+10
+20
+;SAVE history cylinder
+_.ZOOM
+C
+160,15,10
+60
+_.SPHERE
+160,15,10
+10
+;SAVE history sphere
+_.ZOOM
+C
+220,15,10
+60
+_.CONE
+220,15,0
+10
+20
+;SAVE history cone
+_.ZOOM
+C
+280,15,10
+60
+_.WEDGE
+260,0,0
+300,30
+20
+;SAVE history wedge
+_.ZOOM
+C
+360,15,10
+60
+_.TORUS
+360,15,10
+10
+3
+;SAVE history torus
+_.ZOOM
+C
+420,15,10
+60
+_.PYRAMID
+_Sides
+5
+420,15,0
+10
+20
+;SAVE history pyramid
+_.ZOOM
+C
+20,15,10
+80
+_.FILLETEDGE
+_Radius
+3
+20,0,20
+
+
+;SAVE history box_fillet
+_.FILLETEDGE
+_Radius
+2
+40,15,20
+
+
+;SAVE history box_fillet_second
+_.ZOOM
+C
+100,15,10
+60
+_.CHAMFEREDGE
+_Distance
+2
+2
+110,15,20
+
+
+;SAVE history cylinder_chamfer
+; two overlapping boxes united
+_.ZOOM
+C
+20,115,10
+80
+_.BOX
+0,100,0
+30,130
+20
+_.BOX
+20,110,0
+50,140
+20
+_.UNION
+0,100,0
+20,110,0
+
+;SAVE history union
+; a box with a hole: SUBTRACT
+_.ZOOM
+C
+115,115,10
+80
+_.BOX
+100,100,0
+130,130
+20
+_.CYLINDER
+115,115,0
+8
+30
+_.SUBTRACT
+100,100,0
+
+_L
+
+;SAVE history subtract
+; two boxes intersected
+_.ZOOM
+C
+215,115,10
+80
+_.BOX
+200,100,0
+230,130
+20
+_.BOX
+210,110,5
+240,140
+25
+_.INTERSECT
+200,100,0
+210,110,5
+
+;SAVE history intersect
+; a solid extruded from a closed profile
+_.ZOOM
+C
+20,215,10
+80
+_.PLINE
+0,200
+40,200
+40,230
+0,230
+_Close
+_.EXTRUDE
+_L
+
+20
+;SAVE history extrude
+; a solid revolved from a closed profile
+_.ZOOM
+C
+120,215,10
+80
+_.PLINE
+100,200
+112,200
+112,225
+100,225
+_Close
+_.REVOLVE
+_L
+
+150,200,0
+150,225,0
+270
+;SAVE history revolve

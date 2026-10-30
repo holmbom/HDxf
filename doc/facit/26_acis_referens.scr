@@ -1,0 +1,60 @@
+; RUN in AutoCAD 2025 (2026-10-26; hdxf_acis, plan doc/plans/2026-10-26-acis-bygg.md): made steps 1-3 (the hole block, the cavity solid, the sphere cut by SLICE through its center, upper half kept); no cylinder cut and no loft (step 4 is commented out).
+; Open a NEW EMPTY drawing from acad.dwt (Ctrl+N) BEFORE running 26_acis_referens.scr; do not run NEW/OPEN in SCRIPT.
+; AutoCAD 2025 GUI: SCRIPT or drag this file into the drawing window.
+; What it makes: the facit hdxf_acis still lacks (doc/reference/hdxf_acis_sat_21500.md, section 6) and a MASSPROP log of every solid.
+;   1. a through hole made by SUBTRACT (box 30 x 30 x 24 mm, cylinder r 6 at (15,15))
+;   2. a solid with an inner cavity (box 40 mm minus a 10 mm box inside it is not a cavity in AutoCAD: SUBTRACT of an inner solid makes one)
+;   3. a seam and a pole as AutoCAD writes them: a sphere cut by SLICE through its axis, a cylinder cut the same way
+;   4. a closed solid whose wall is a B-spline: LOFT of three splines (closed), with the SOLID option
+; Save as DXF 2010 and 2018, ASCII and binary, as 10_solids.scr does (names acad_<version>_dxf_acis_reference[_bin].dxf).
+(setvar "FILEDIA" 0)
+(setvar "CMDDIA" 0)
+(vl-load-com)
+(setq fx:doc (vla-get-ActiveDocument (vlax-get-acad-object)) fx:ms (vla-get-ModelSpace fx:doc) fx:base "C:/HDxf/doc/facit/")
+(defun fx:need (ok message) (if (not ok) (progn (setvar "FILEDIA" 1) (setvar "CMDDIA" 1) (princ (strcat "\nFEL: " message "\n")) (exit))))
+(defun fx:idle () (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (progn (command) (fx:need nil "Command did not finish; stop this script and inspect F2."))))
+(setvar "CMDECHO" 1)
+(setvar "OSMODE" 0)
+(setvar "3DOSMODE" 0)
+(setvar "DYNMODE" 0)
+(setvar "SOLIDHIST" 0)
+(command "_.UCS" "_World")
+(fx:idle)
+; 1. through hole
+(command "_.BOX" "0,0,0" "30,30" "24")
+(fx:idle)
+(setq fx:hole-block (entlast))
+(command "_.CYLINDER" "15,15,-10" "6" "50")
+(fx:idle)
+(command "_.SUBTRACT" fx:hole-block "" (entlast) "")
+(fx:idle)
+; 2. cavity: an inner box subtracted from an outer box it lies wholly inside
+(command "_.BOX" "100,0,0" "140,40" "40")
+(fx:idle)
+(setq fx:outer (entlast))
+(command "_.BOX" "115,15,15" "125,25" "10")
+(fx:idle)
+(command "_.SUBTRACT" fx:outer "" (entlast) "")
+(fx:idle)
+; 3. a sphere and a cylinder sliced through their axes, one half kept (the cut makes a planar face and seams or poles on the rest)
+(command "_.SPHERE" "200,20,20" "12")
+(fx:idle)
+(setq fx:half-sphere (entlast))
+(command "_.SLICE" fx:half-sphere "" "_XY" "200,20,20" "200,20,25")
+(fx:idle)
+; 4. closed B-spline solid: three closed splines lofted (replace by the loft you checked in 10_solids.scr if the prompts differ)
+; (command "_.SPLINE" ...) (command "_.LOFT" ... "_MOde" "_SOlid") -- fill in the points at the AutoCAD prompt, then keep the solid
+; MASSPROP of every solid and region to one log each (handles in the names); MASSPROP asks for a file: Y, then the name
+(setq fx:ss (ssget "_X" '((0 . "3DSOLID,REGION"))) fx:i 0)
+(while (and fx:ss (< fx:i (sslength fx:ss)))
+  (setq fx:e (ssname fx:ss fx:i))
+  (command "_.MASSPROP" fx:e "" "_Y" (strcat fx:base "acad_acis_reference_" (cdr (assoc 5 (entget fx:e))) ".mpr"))
+  (fx:idle)
+  (setq fx:i (1+ fx:i)))
+; Surface area is not in MASSPROP: AREA, Object, per solid; read it from the command line (F2) and write it next to the log
+(command "_.REGENALL")
+(fx:idle)
+(foreach pair '(("2010" "2010") ("2018" "2018")) (setq v (cadr pair) path (strcat fx:base "acad_" (car pair) "_dxf_acis_reference.dxf")) (command "_.SAVEAS" "DXF" "_V" v "16" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path)) (setq path (strcat fx:base "acad_" (car pair) "_dxf_acis_reference_bin.dxf")) (command "_.SAVEAS" "DXF" "_V" v "_B" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path)))
+(setvar "FILEDIA" 1)
+(setvar "CMDDIA" 1)
+(princ "\nKLAR 26_acis_referens\n")

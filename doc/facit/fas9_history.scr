@@ -1,0 +1,360 @@
+; fas9_history.scr - facit script of step 9.14 (F9.10, the solids' history): ACSH_HISTORY_CLASS and its nodes, made by AutoCAD 2025's
+; own core. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_history.scr
+; It starts from acad.dwt (a new empty drawing) and uses plain AutoCAD commands, no LISP (the core has none). SOLIDHIST 1 comes first:
+; every solid made after it carries a history (ACSH_HISTORY_CLASS owned by the solid, the ACAD_EVALUATION_GRAPH the history owns, one
+; node object per operation). Edges and faces are picked by a point on them in the south-west isometric view (the core resolves a
+; typed point to the edge), the profiles of a window selection in the plan view after ZOOM Extents (an object outside the view is
+; not selectable in the core); a window must have the object whole inside it.
+;
+; Files (acad_<version>_dxf_<theme>[_<change>][_bin].dxf, 2000 ... 2018; the core cannot save R13/R14; 2000 and 2004 have no history,
+; AutoCAD drops it there):
+;   history_primitives                   BOX 20x15x20, SPHERE r12, CYLINDER r10 h25, CONE r12 h30, TORUS 15/4, WEDGE 25x20x20, PYRAMID
+;                                        5 sides r15 h25 (all with non-default sizes), a frustum CONE r12 top 5, an elliptical CYLINDER
+;                                        (axes 4 and 10), a PYRAMID of 6 sides with a top radius: the primitives' own subclasses
+;   history_primitives rotated           the box turned 30 degrees about the X axis (ROTATE3D): its node's 40 ... 55 change
+;   history_primitives moved             the box moved by (10, 5) (MOVE)
+;   history_primitives mirrored          the box mirrored in the plane y = -10 (MIRROR3D)
+;   history_profiles                     a rectangle extruded (profile as a bit stream), a region extruded with a 10 degree taper (profile as SAT
+;                                        lines), a circle extruded along a path and swept (two source geometries: profile and path), a
+;                                        REVOLVE of 270 degrees, three LOFTs: cross sections only, with two guide curves, with a path
+;   history_boolean                      three pairs of solids, not yet combined
+;   history_boolean applied              UNION, SUBTRACT and INTERSECT of them (ACSH_BOOLEAN_CLASS operation 0, 2 and 1)
+;   history_edges                        two boxes
+;   history_edges filleted               a FILLETEDGE of three edges of the first (radius 2): ACSH_FILLET_CLASS with three edges
+;   history_edges chamfered              a CHAMFEREDGE of two edges of the second (distances 2 and 3): ACSH_CHAMFER_CLASS
+;   history_brep                         a box that BREP has made a boundary representation of, united with another box: ACSH_BREP_CLASS
+;
+; What the core cannot do, and what is therefore "ej testat" (plan 2026-10-27-fas-9-typer.md, F9.10): changing a primitive's size through
+; grips or the properties palette (the core has neither: only the commands above change a solid), SOLIDEDIT and PRESSPULL (they pick
+; faces on the screen: PRESSPULL does not take a point on a face here), CHAMFER/FILLET of faces, a SWEEP or LOFT with twist and
+; draft options set through the dialog, R13/R14.
+_.SOLIDHIST
+1
+_.UCS
+_World
+_.BOX
+0,0,0
+20,15
+20
+_.SPHERE
+50,10,10
+12
+_.CYLINDER
+90,10,0
+10
+25
+_.CONE
+130,10,0
+12
+30
+_.TORUS
+170,10,12
+15
+4
+_.WEDGE
+197.5,0,0
+222.5,20
+20
+_.PYRAMID
+_Sides
+5
+250,10,0
+15
+25
+_.CONE
+300,10,0
+12
+_Top
+5
+30
+_.CYLINDER
+_Elliptical
+330,10,0
+350,10,0
+340,14,0
+20
+_.PYRAMID
+_Sides
+6
+380,10,0
+14
+_Top
+8
+20
+;EXPECT ACSH_HISTORY_CLASS ACSH_BOX_CLASS ACSH_WEDGE_CLASS ACSH_SPHERE_CLASS ACSH_CYLINDER_CLASS ACSH_CONE_CLASS ACSH_TORUS_CLASS ACSH_PYRAMID_CLASS
+;SAVE history_primitives
+_.UNDO
+_Mark
+_.ROTATE3D
+_Window
+-1,-1
+21,16
+
+_X
+0,0,0
+30
+;SAVE history_primitives rotated
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.MOVE
+_Window
+-1,-1
+21,16
+
+0,0
+10,5
+;SAVE history_primitives moved
+_.UNDO
+_Back
+_.UNDO
+_Mark
+_.MIRROR3D
+_Window
+-1,-1
+21,16
+
+_ZX
+0,-10,0
+_N
+;SAVE history_primitives mirrored
+_.UNDO
+_Back
+; --- profiles: extrusion, sweep, revolve and the three lofts
+_.RECTANG
+0,60
+30,80
+_.EXTRUDE
+_L
+
+25
+_.RECTANG
+40,60
+60,80
+_.REGION
+_L
+
+_.EXTRUDE
+_L
+
+_Taper
+10
+25
+_.CIRCLE
+100,70
+6
+_.3DPOLY
+100,70,0
+100,70,30
+120,70,50
+
+_.ZOOM
+_Extents
+_.EXTRUDE
+_Window
+92,62
+108,78
+
+_Path
+120,70,50
+_.CIRCLE
+150,70
+4
+_.3DPOLY
+150,70,0
+165,80,20
+185,95,35
+
+_.ZOOM
+_Extents
+_.SWEEP
+_Window
+144,64
+156,76
+
+185,95,35
+_.CIRCLE
+200,70,0
+6
+_.CIRCLE
+215,80,20
+5
+_.CIRCLE
+200,95,40
+7
+_.ZOOM
+_Extents
+_.LOFT
+206,70,0
+220,80,20
+207,95,40
+
+
+_.PLINE
+60,150
+72,150
+72,175
+60,175
+_Close
+_.REVOLVE
+_L
+
+50,150
+50,175
+270
+_.CIRCLE
+0,200,0
+10
+_.CIRCLE
+40,200,20
+10
+_.SPLINE
+0,210,0
+20,218,10
+40,210,20
+
+
+
+_.SPLINE
+0,190,0
+20,182,10
+40,190,20
+
+
+
+_.ZOOM
+_Extents
+_.LOFT
+-10,200,0
+50,200,20
+
+_Guides
+20,218,10
+20,182,10
+
+_.CIRCLE
+0,250,0
+10
+_.CIRCLE
+40,250,20
+10
+_.SPLINE
+0,250,0
+20,256,10
+40,250,20
+
+
+
+_.ZOOM
+_Extents
+_.LOFT
+-10,250,0
+50,250,20
+
+_Path
+20,256,10
+;SAVE history_profiles
+; --- Boolean operations, before and after
+_.BOX
+0,300,0
+20,320
+20
+_.SPHERE
+20,310,10
+12
+_.BOX
+60,300,0
+80,320
+20
+_.CYLINDER
+70,310,-5
+5
+30
+_.BOX
+120,300,0
+140,320
+20
+_.SPHERE
+130,310,10
+12
+_.ZOOM
+_Extents
+;SAVE history_boolean
+_.UNION
+_Window
+-1,295
+34,326
+
+_.SUBTRACT
+60,310
+
+75,310,25
+
+_.INTERSECT
+_Window
+116,295
+144,326
+
+;SAVE history_boolean applied
+; --- fillet and chamfer of several edges, before and after
+_.BOX
+200,300,0
+220,320
+20
+_.BOX
+250,300,0
+270,320
+20
+_.-VIEW
+_SWIso
+_.ZOOM
+_Extents
+;SAVE history_edges
+_.FILLETEDGE
+_Radius
+2
+210,300,20
+220,310,20
+210,320,20
+
+
+;SAVE history_edges filleted
+_.CHAMFEREDGE
+_Distance
+2
+3
+260,300,20
+270,310,20
+
+
+;SAVE history_edges chamfered
+; --- BREP: a boundary representation united with a box
+_.-VIEW
+_Top
+_.BOX
+0,400,0
+20,420
+20
+_.BOX
+60,400,0
+80,420
+20
+_.BOX
+70,410,0
+90,430
+20
+_.ZOOM
+_Extents
+_.BREP
+_Window
+59,399
+81,421
+
+_.UNION
+_Window
+59,399
+91,431
+
+;SAVE history_brep

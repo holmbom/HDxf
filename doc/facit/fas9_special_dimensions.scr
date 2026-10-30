@@ -1,0 +1,217 @@
+; fas9_special_dimensions.scr - facit of step 9.17 (F9.20 ARC_DIMENSION and LARGE_RADIAL_DIMENSION, and the DIMASSOC part of F9.8).
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_special_dimensions.scr
+; starts AutoCAD 2025's core on acad.dwt (a new empty drawing). Plain AutoCAD commands, no LISP (see fas9_example.scr).
+; An empty line is Enter; a command with a point to pick is given the coordinates of the pick, which the core resolves against the
+; objects (ZOOM Extents first: a pick far from the view is not found). DIMASSOC 2 makes the dimensions associative: a point that is
+; an object snap (_end) or an object that is picked has its DIMASSOC point reference; a bare coordinate gives none ("Non-associative
+; dimension created").
+;
+; What is made (model space unless said):
+;   dim_special                  a triangle (three LINEs), two circles and two arcs; DIMLINEAR (picked object), DIMALIGNED (endpoints),
+;                                DIMANGULAR (two lines), DIMRADIUS, DIMDIAMETER, two DIMORDINATE, DIMARC (arc, then a partial one),
+;                                DIMJOGGED (circle with centre override, jog and text positions; arc)
+;   dim_special <change>         one change per file, cumulative: a circle moved, a vertex stretched, an arc scaled, the text of an arc
+;                                dimension moved (DIMTEDIT), one dimension disassociated (DIMDISASSOCIATE) and one reassociated
+;                                (DIMREASSOCIATE), a referenced circle erased
+;   dim_special_paper            the same kinds in paper space (Layout1)
+;   dim_special_block            DIMARC and DIMJOGGED inside a block, the block inserted
+;
+; Not made here (plan 9.17, "Ej testat", F9.8/F9.20): an intersection object snap (_int) or a subentity marker on a 3D solid (no solid
+; dimensions in the core's DIM commands), a reference into an xref (DIMASSOC's external strings 301/302: the core has no second drawing
+; here), the text of an arc or jogged dimension edited with DIMEDIT New (the in-place text editor), grips for the jog or the arc
+; symbol (no window).
+_.DIMASSOC
+2
+_.LINE
+0,0
+80,0
+80,50
+0,0
+
+_.CIRCLE
+30,110
+20
+_.CIRCLE
+100,110
+12
+_.ARC
+_C
+150,110
+170,110
+150,130
+_.ARC
+_C
+200,60
+220,60
+200,80
+_.ZOOM
+_E
+_.DIMLINEAR
+
+40,0
+40,-20
+_.DIMALIGNED
+_end
+0,0
+_end
+80,50
+-15,40
+_.DIMANGULAR
+80,25
+40,25
+50,10
+_.DIMRADIUS
+50,110
+65,125
+_.DIMDIAMETER
+112,110
+122,100
+_.DIMORDINATE
+_end
+80,50
+_Xdatum
+120,100
+_.DIMORDINATE
+_end
+80,0
+_Ydatum
+120,40
+_.DIMARC
+164.1421356,124.1421356
+160,140
+_.DIMARC
+214.1421356,74.1421356
+_Partial
+_end
+220,60
+_end
+200,80
+235,85
+_.DIMJOGGED
+50,110
+10,90
+0,100
+-20,95
+_.DIMJOGGED
+214.1421356,74.1421356
+190,100
+225,100
+210,90
+;EXPECT DIMASSOC ARC_DIMENSION LARGE_RADIAL_DIMENSION
+;SAVE dim_special
+_.MOVE
+112,110
+
+0,0
+10,10
+_.ZOOM
+_E
+;SAVE dim_special circle_moved
+_.STRETCH
+_C
+70,45
+90,55
+
+80,50
+85,60
+_.ZOOM
+_E
+;SAVE dim_special vertex_stretched
+_.SCALE
+164.1421356,124.1421356
+
+150,110
+1.5
+_.ZOOM
+_E
+;SAVE dim_special arc_scaled
+_.DIMTEDIT
+160,140
+175,150
+;SAVE dim_special text_moved
+_.DIMDISASSOCIATE
+40,-20
+
+;SAVE dim_special disassociated
+_.DIMREASSOCIATE
+40,-20
+
+_end
+0,0
+_end
+80,0
+;SAVE dim_special reassociated
+_.ERASE
+122,120
+
+;SAVE dim_special circle_erased
+_.TILEMODE
+0
+_.LINE
+20,20
+100,20
+100,80
+20,20
+
+_.ARC
+_C
+150,60
+170,60
+150,80
+_.CIRCLE
+60,60
+10
+_.ZOOM
+_E
+_.DIMLINEAR
+
+60,20
+60,10
+_.DIMARC
+164.1421356,74.1421356
+160,90
+_.DIMJOGGED
+50,60
+40,40
+30,50
+20,45
+_.DIMRADIUS
+67.0710678,67.0710678
+80,75
+;SAVE dim_special_paper
+_.TILEMODE
+1
+_.ARC
+_C
+1300,60
+1320,60
+1300,80
+_.CIRCLE
+1260,60
+10
+_.ZOOM
+_E
+_.DIMARC
+1314.1421356,74.1421356
+1310,90
+_.DIMJOGGED
+1250,60
+1240,40
+1230,50
+1220,45
+_.-BLOCK
+HDXF_SPECIAL
+1300,60,0
+_W
+1200,0
+1340,110
+
+_.INSERT
+HDXF_SPECIAL
+1500,0
+1
+1
+0
+_.ZOOM
+_E
+;SAVE dim_special_block

@@ -1,0 +1,59 @@
+; fas9_mtext_width.scr - facit of 9.S (Codex 17): does an MTEXT's width (41, its context's 40) count in $EXTMIN/$EXTMAX, plain and
+; annotative at another annotation scale?
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_mtext_width.scr
+; starts AutoCAD 2025's core on acad.dwt (a new empty drawing). Plain AutoCAD commands, no LISP (see fas9_example.scr).
+;   mtext_width              one MTEXT "A" at 0,0 set in a width of 100 (the text far narrower than its width), REGENALL, ZOOM E
+;   mtext_width annotative   the MTEXT erased; an annotative MTEXT "A" at 0,0 in a width of 20 (style HDXF_ANNO, height 3), the scale
+;                            HDXF_1_5 added to it, CANNOSCALE HDXF_1_5, REGENALL, ZOOM E (its width there is 100)
+_.-MTEXT
+0,0
+_W
+100
+A
+
+_.REGENALL
+_.ZOOM
+_E
+;SAVE mtext_width
+_.ERASE
+_ALL
+
+_.ANNOALLVISIBLE
+1
+_.ANNOAUTOSCALE
+0
+_.-SCALELISTEDIT
+_Add
+HDXF_1_5
+1:5
+_Exit
+_.-STYLE
+HDXF_ANNO
+txt
+_Annotative
+_Yes
+_No
+3
+1
+0
+_No
+_No
+_No
+_.-MTEXT
+0,0
+_W
+20
+A
+
+_.-OBJECTSCALE
+_ALL
+
+_Add
+HDXF_1_5
+
+_.CANNOSCALE
+HDXF_1_5
+_.REGENALL
+_.ZOOM
+_E
+;SAVE mtext_width annotative

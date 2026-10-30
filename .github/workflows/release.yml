@@ -1,0 +1,137 @@
+# Builds HDxf in Release mode and puts prebuilt libraries on the release: one package per toolchain,
+# since static C++ libraries cannot be mixed between MSVC, MinGW and GCC. Each package is a
+# `cmake --install`: the libraries, hdxf.hpp and hdxf_acis.hpp, and the CMake package for
+# find_package(hdxf), plus the license and the READMEs.
+#
+# Runs when a tag vX.Y.Z is pushed, or by hand (Actions → Release → Run workflow) for a tag that
+# already exists.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to build (e.g. v1.9.1)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  CONFIGURE: -G Ninja -DCMAKE_BUILD_TYPE=Release -DHDXF_BUILD_TESTS=OFF -DHDXF_ACIS_BUILD_TESTS=OFF -DHDXF_INSTALL=ON
+
+jobs:
+  # The release is made ONCE, before the builds. Three jobs that each try to make it can collide;
+  # these only upload to a release that exists.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1 ||
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "HDxf $TAG" --generate-notes
+
+  windows-msvc:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake -S . -B build $CONFIGURE -DCMAKE_CXX_COMPILER=cl
+          cmake --build build
+          cmake --install build --prefix "HDxf-${TAG}-windows-msvc-x64"
+
+      - name: Package
+        shell: bash
+        run: |
+          pkg="HDxf-${TAG}-windows-msvc-x64"
+          cp LICENSE README.md README.sv.md "$pkg/"
+          7z a -tzip "$pkg.zip" "$pkg" > /dev/null
+          echo "PKG=$pkg.zip" >> "$GITHUB_ENV"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ${{ env.PKG }}
+
+  windows-mingw:
+    needs: release
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            zip
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+
+      - name: Build
+        run: |
+          pkg="HDxf-${TAG}-windows-mingw-x64"
+          cmake -S . -B build $CONFIGURE
+          cmake --build build
+          cmake --install build --prefix "$pkg"
+
+      - name: Package
+        run: |
+          pkg="HDxf-${TAG}-windows-mingw-x64"
+          cp LICENSE README.md README.sv.md "$pkg/"
+          zip -qr "$pkg.zip" "$pkg"
+          echo "PKG=$pkg.zip" >> "$GITHUB_ENV"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ${{ env.PKG }}
+
+  linux:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Build
+        run: |
+          pkg="HDxf-${TAG}-linux-x64"
+          cmake -S . -B build $CONFIGURE
+          cmake --build build
+          cmake --install build --prefix "$pkg"
+
+      - name: Package
+        run: |
+          pkg="HDxf-${TAG}-linux-x64"
+          cp LICENSE README.md README.sv.md "$pkg/"
+          tar -czf "$pkg.tar.gz" "$pkg"
+          echo "PKG=$pkg.tar.gz" >> "$GITHUB_ENV"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ${{ env.PKG }}

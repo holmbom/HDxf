@@ -1,0 +1,41 @@
+; fas9_tables.scr - step 9.1 (tables), F9.5 and the F9.27 gaps. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_tables.scr
+; on AutoCAD 2025's core (plain commands, no LISP).
+;
+; What the core can make of a table: the -TABLE command (columns, rows, width, height, insertion point). It has no
+; in-place text editor (TABLEDIT picks a cell and then waits for one, the typed text is taken for a command), no
+; -TABLESTYLE and no LISP/VBA, so a table made here has empty cells, and the text, formula, merge, border, fill,
+; custom data and multiple-content branches of F9.5 are the ones doc/facit/12_tables.scr made by hand in the AutoCAD
+; GUI (acad_<ver>_dxf_tables*.dxf, which HDxf's tests use as facit). The branches this file cannot make are
+; "ej testat" in doc/plans/2026-10-27-fas-9-typer.md, Utfall 9.1: text/date/point/buffer values with a changed text
+; (F9.5, F9.27), a table style with changed rows/borders (F9.5), a cell style of the user's (F9.5).
+;
+; What it does make: two tables of different size, which show AutoCAD's form of an EMPTY table (HDxf's add_table
+; has to match it: -TABLE's rows are the data rows, AutoCAD adds the title and header row; the title row is merged;
+; the table has NO extension dictionary and no TABLECONTENT/TABLEGEOMETRY — AutoCAD makes them when a cell has
+; content), the same drawing with the first table moved (its proxy graphics and *T block follow) and with it
+; erased (the BLOCK_RECORD *T goes, the style loses the table as a reactor: the B19 chain).
+_.-TABLE
+4
+7
+_W
+35
+_H
+2
+0,80
+_.-TABLE
+3
+3
+10,-20
+;EXPECT ACAD_TABLE TABLESTYLE CELLSTYLEMAP
+;SAVE table_empty
+_.MOVE
+_L
+
+0,0
+15,5
+;SAVE table_empty moved
+_.ERASE
+_L
+
+;SAVE table_empty erased

@@ -1,0 +1,18 @@
+; Run in a NEW EMPTY acad.dwt drawing. AutoCAD 2025, SCRIPT this file.
+; Uses the template's real Imperial24 DETAIL/SECTION styles, as 18_render_modeldoc.
+; No invented style objects. VIEWBASE failed to load Inventor Server on this installation.
+; New styles and derived drawing views remain a GUI/installation task; see coverage.md.
+(setvar "FILEDIA" 0)
+(setvar "CMDDIA" 0)
+(vl-load-com)
+(setq fx:base "C:/HDxf/doc/facit/")
+(defun fx:need (ok message) (if (not ok) (progn (princ (strcat "\nFEL: " message "\n")) (exit))))
+(defun fx:idle () (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (progn (command) (fx:need nil "Command did not finish. Inspect F2."))))
+(defun fx:field (e subclass code value / active data out found) (setq data (entget e)) (foreach g data (if (= (car g) 100) (setq active (= (cdr g) subclass))) (if (and active (= (car g) code)) (setq g (cons code value) found T)) (setq out (cons g out))) (fx:need found (strcat "Native field absent: " subclass "/" (itoa code))) (fx:need (entmod (reverse out)) "Native style rejected property edit"))
+(defun fx:style (dictname typename display flags / dd style) (setq dd (dictsearch (namedobjdict) dictname)) (fx:need dd (strcat "Missing native dictionary " dictname)) (setq style (dictsearch (cdr (assoc -1 dd)) "Imperial24")) (fx:need (= (cdr (assoc 0 style)) typename) (strcat "Missing native style " typename)) (fx:field (cdr (assoc -1 style)) "AcDbModelDocViewStyle" 300 display) (fx:field (cdr (assoc -1 style)) "AcDbModelDocViewStyle" 90 flags))
+(defun fx:save (theme / pair v path) (foreach pair '(("r12" "R12") ("2000" "2000") ("2004" "2004") ("2007" "2007") ("2010" "2010") ("2013" "2013") ("2018" "2018")) (setq v (cadr pair) path (strcat fx:base "acad_" (car pair) "_dxf_" theme ".dxf")) (command "_.SAVEAS" "DXF" "_V" v "16" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path)) (setq path (strcat fx:base "acad_" (car pair) "_dxf_" theme "_bin.dxf")) (command "_.SAVEAS" "DXF" "_V" v "_B" path) (if (/= 0 (logand (getvar "CMDACTIVE") 3)) (command "_Y")) (fx:idle) (fx:need (findfile path) (strcat "Missing output " path))))
+(defun fx:run (/ doc) (setq doc (vla-get-ActiveDocument (vlax-get-acad-object))) (fx:need (= 0 (vla-get-Count (vla-get-ModelSpace doc))) "A new empty acad.dwt drawing is required") (setvar "OSMODE" 0) (setvar "TILEMODE" 1) (command "_.BOX" "0,0,0" "30,20" "20") (fx:idle) (vla-Add (vla-get-Layouts doc) "HDXF_MODELDOC") (fx:style "ACAD_DETAILVIEWSTYLE" "ACDBDETAILVIEWSTYLE" "HDxf detail display name" 3) (fx:style "ACAD_SECTIONVIEWSTYLE" "ACDBSECTIONVIEWSTYLE" "HDxf section display name" 5) (command "_.REGENALL") (fx:idle) (fx:save "modeldoc_views"))
+(setq fx:result (vl-catch-all-apply 'fx:run nil))
+(setvar "FILEDIA" 1)
+(setvar "CMDDIA" 1)
+(if (vl-catch-all-error-p fx:result) (princ (strcat "\nFEL 22_modeldoc_views: " (vl-catch-all-error-message fx:result) "\n")) (princ "\nKLAR 22_modeldoc_views\n"))

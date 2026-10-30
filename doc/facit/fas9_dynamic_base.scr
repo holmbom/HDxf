@@ -1,0 +1,45 @@
+; fas9_dynamic_base.scr - step 9.9 of phase 9 (plan 2026-10-27-fas-9-typer.md, F9.9): the evaluation graph and the bases
+; of the dynamic block elements. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_dynamic_base.scr --input doc/facit/acad_2018_dxf_dynamic_blocks.dxf --out <directory>
+;
+; AutoCAD 2025's core has no -BEDIT, BPARAMETER, BACTION or BAUTHORPALETTE ("Unknown command"), so a dynamic block cannot
+; be authored headless: the start is the AutoCAD-saved drawing of Erik's Block Editor session (script 16_dynamic_blocks.scr:
+; HDXF_DYNAMIC with base point, alignment, linear, rotation, flip and visibility parameters, their grips and the stretch,
+; rotate, flip and move actions; one INSERT of the definition and one INSERT of its anonymous block *U4). The core opens
+; the DXF as it is and saves it again; what it adds is the state of the drawing after commands it does have:
+;
+;   dynbase            the drawing AutoCAD itself saves from that file (every record the step types: ACAD_EVALUATION_GRAPH,
+;                      BLOCKGRIPLOCATIONCOMPONENT, BLOCKLINEARPARAMETER, BLOCKLINEARGRIP, BLOCKVISIBILITYPARAMETER,
+;                      BLOCKVISIBILITYGRIP, ACDB_BLOCKREPRESENTATION_DATA, ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION)
+;   dynbase shared     a third INSERT of the original definition: the definition is shared by two INSERTs and the
+;                      anonymous block's representation (BLKREFS of the definition and of *U4)
+;   dynbase renamed    the definition renamed: the true name in the XDATA AcDbDynamicBlockTrueName and the graph's
+;                      owner chain stay, the INSERTs follow the new name
+;   dynbase purged     every INSERT erased and the unused blocks purged: AutoCAD removes the definition, the anonymous
+;                      block, the graph, its elements and the representation (the cascade of B19)
+;
+; Not made here (ej testat, F9.9): a change of a parameter, action or visibility state (needs the Block Editor or a
+; dynamic property edit: the core has no -PROPERTIES for dynamic properties), BLOCKSCALEACTION by AutoCAD 2025 (the
+; ACadSharp samples of AutoCAD 2000 … 2018 have it and are the facit for it).
+;EXPECT ACAD_EVALUATION_GRAPH BLOCKGRIPLOCATIONCOMPONENT BLOCKLINEARPARAMETER BLOCKLINEARGRIP BLOCKVISIBILITYPARAMETER BLOCKVISIBILITYGRIP ACDB_BLOCKREPRESENTATION_DATA ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION
+;SAVE dynbase
+_.-INSERT
+HDXF_DYNAMIC
+200,0
+1
+1
+0
+;SAVE dynbase shared
+_.-RENAME
+_Block
+HDXF_DYNAMIC
+HDXF_RENAMED
+;SAVE dynbase renamed
+_.ERASE
+_ALL
+
+_.-PURGE
+_B
+*
+_N
+;SAVE dynbase purged
