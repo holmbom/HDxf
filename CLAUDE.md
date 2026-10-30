@@ -98,7 +98,8 @@ and sources: `test/data/README.md`. Own small files: `test/data/synthetic/` (che
   version (phase 0 → 1.1.0, phase 1 → 1.2.0 …); sub-steps (0.1, 0.2 …) are committed
   and pushed
   without a tag; fixes after a release bump the patch (1.1.1 …); update the version in
-  `CMakeLists.txt`, `include/hdxf.hpp`, `CLAUDE.md` and `README.md`, and tag it;
+  `CMakeLists.txt`, `include/hdxf.hpp` (`struct Version` and the header comment; `version_string` checks it against
+  CMakeLists.txt), `CLAUDE.md`, `README.md` and `README.sv.md`, and tag it;
   2.0.0 when all phases are done
 
 ## Using in Other Projects (CMake FetchContent)

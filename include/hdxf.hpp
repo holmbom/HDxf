@@ -83,8 +83,8 @@ enum class DxfFormat { Ascii, Binary };
 
 struct Version {
     static constexpr int major = 1;
-    static constexpr int minor = 3;
-    static constexpr int patch = 0;
+    static constexpr int minor = 9;
+    static constexpr int patch = 1;
     static constexpr const char* suffix = "";
 
     static std::string string() {

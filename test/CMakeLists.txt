@@ -202,6 +202,7 @@ target_include_directories(hdxf_tests PRIVATE
 target_compile_definitions(hdxf_tests PRIVATE
     HDXF_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
     HDXF_SOURCE_DIR="${PROJECT_SOURCE_DIR}"
+    HDXF_PROJECT_VERSION="${PROJECT_VERSION}"
     HDXF_EXTERNAL_DATA_DIR="${HDXF_EXTERNAL_DATA_DIR}"
 )
 
