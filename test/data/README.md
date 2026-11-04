@@ -267,6 +267,7 @@ ezdxf 1.4.5 and passed its audit with no errors or fixes (plan B7). Tests:
 | `r2004_unicode_escapes.dxf` | AC1018, `ANSI_1252` | Layer `Lager_\U+00E5\U+00E4\U+00F6`; TEXT `\U+00E5\U+00E4\U+00F6 \U+00C5\U+00C4\U+00D6 \U+20AC`; the same text as ANSI_1252 bytes; `\U+220545,6` |
 | `r2004_thumbnail.dxf` | AC1018, `ANSI_1252` | `r2004_unicode_escapes.dxf` with a THUMBNAILIMAGE of our own: `90 64`, a 4×2 24-bit DIB (BITMAPINFOHEADER + 24 bytes: blue row, then red red white white) in two `310` of 32 bytes |
 | `r2007_utf8.dxf` | AC1021, `ANSI_1252` | Layer `Lager_åäö` and TEXT `åäö ÅÄÖ €`, `∅45,6` in UTF-8 |
+| `extents_visibility.dxf` | AC1009 | Input of the facit `doc/facit/fas9_extents_visibility.scr`: visible and invisible entities (60 = 1) at the top level, in blocks and on INSERT, ATTRIB with 60 and with 70 bit 1, ATTDEF, and in paper space |
 | `r2000_large_handles.dxf` | AC1015 | Every handle from `FFFFFFFFFFFFFF00`; `$HANDSEED FFFFFFFFFFFFFF1C` |
 | `r2018_embedded_object.dxf` | AC1032 | `101 Embedded Object` followed by group codes the entity already had, with other values. The values before 101 are the entity's. **MTEXT** at (1, 2), height 2.5, width 50; after 101: 10 = (0, 1), 11 = (99, 99), 40 = 999, 41 = 888. **ATTDEF** (block `EMBEDDED_ATT`, tag `MULTI`) and **ATTRIB** (on an INSERT of it), laid out like AutoCAD 2018's multi-line attributes: own 10 = (5, 6), 40 = 2.5, 1 empty; after 101: 10 = (5, 8.5), 40 = 3.5, 1 = `default line 1\Pdefault line 2` / `attrib line 1\Pattrib line 2` |
 

@@ -9,8 +9,11 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -144,48 +147,173 @@ struct BlockHost {
 
 using BlockEntityExtents = std::function<void(const Entity&, const Matrix&)>;
 
+class MLeaderDrawer;
+
+// A leader line between its start and the end of its arrowhead: what the rest of the line needs
+struct LineInProgress {
+    int32_t color = 0;                  // what the line is drawn in
+    int linetype = 0;
+    int weight = 0;
+    bool own_color = false;             // the line has its own color, linetype, lineweight
+    bool own_linetype = false;
+    bool own_weight = false;
+    std::vector<Point3> points;
+    bool trims = false;                 // the arrowhead shortens the line
+    Point3 trim_to;                     // where the line starts then
+};
+
+// What a drawer does next while it walks the blocks it draws. The walk keeps these on the heap, so the depth of the
+// blocks inside blocks is limited by memory and not by the call stack.
+enum class DrawStepKind {
+    Entity,         // an entity of a block: its color and lineweight, then its own graphics
+    EntityEnd,      // after an entity that draws blocks: what it changed is put back
+    Copies,         // the next copy of an INSERT's array, or the end of the array
+    CopyEnd,        // the end of one copy: its transform is popped
+    InsertEnd,      // after an INSERT's copies: its block is free again, then its attributes
+    DimensionEnd,   // after a DIMENSION's block: the block is free again, its transform is popped
+    BlockEnd,       // after a MULTILEADER's block: its transform is popped, its attributes, the rest of its drawing
+    InnerEnd,       // after a MULTILEADER in a block: the drawer that drew it is released
+    ArrowEnd        // after a leader line's arrowhead block: its transform is popped, the line and the leaders go on
+};
+
+struct DrawStep {
+    DrawStepKind kind = DrawStepKind::Entity;
+    MLeaderDrawer* drawer = nullptr;            // the drawer whose graphics and transforms this step uses
+    const Entity* entity = nullptr;
+    const BlockHost* host = nullptr;
+    const Block* block = nullptr;
+    size_t copy = 0;                            // Copies: the array element drawn next
+    bool top = false;                           // Entity: an entity of the block the MULTILEADER draws
+    bool trait = false;                         // EntityEnd: the thickness was set
+    bool entered = false;                       // the block was marked as being drawn by this step's owner
+    std::shared_ptr<MLeaderDrawer> keep;        // InnerEnd: the MULTILEADER that is drawn
+};
+
+// The blocks being drawn by one MULTILEADER and the ones inside its blocks: the steps still to do (the last is done
+// first), the hosts the steps point to, and the blocks being drawn now (a block that inserts itself is drawn once on its
+// way down; only that branch stops).
+constexpr int kBlockMetLimit = 64;
+
+struct BlockWalk {
+    std::vector<DrawStep> steps;
+    std::deque<BlockHost> hosts;                // stable addresses: steps point to them
+    std::deque<Block> blocks;                   // the built-in arrowheads drawn, which steps point into
+    std::unordered_set<const Block*> active;    // the blocks of INSERTs, DIMENSIONs and MULTILEADERs being drawn
+    std::unordered_set<const Block*> arrows;    // the arrowhead blocks being drawn
+    std::unordered_map<const Block*, int> met;  // how many times a block was met while it was being drawn
+
+    // Whether a block is drawn now: not when it is being drawn (a block that inserts itself). Blocks that all insert each other have
+    // more paths than can be drawn, so one met this many times is not entered any more
+    bool enter(const Block* b) {
+        if (auto seen = met.find(b); seen != met.end() && seen->second >= kBlockMetLimit) return false;
+        if (active.insert(b).second) return true;
+        ++met[b];
+        return false;
+    }
+
+    const BlockHost* add_host(BlockHost host) {
+        hosts.push_back(std::move(host));
+        return &hosts.back();
+    }
+
+    void run();
+};
+
 class MLeaderDrawer {
 public:
     // extents: what it draws, as the extents count it (null: only the graphics), mapped by
-    // `map`; the entities of its blocks go to block_entity instead, with their transform
+    // `map`; the entities of its blocks go to block_entity instead, with their transform.
+    // graphics: the stream a MULTILEADER in a block draws into (the stream of the one it is in); null: its own
     MLeaderDrawer(const Drawing& dwg, const Entity& e, const ProxyTables& tables, TextLayout& layout, bool unicode,
-                  Extents* extents, const Matrix& map = identity(), BlockEntityExtents block_entity = nullptr)
+                  Extents* extents, const Matrix& map = identity(), BlockEntityExtents block_entity = nullptr,
+                  ProxyGraphics* graphics = nullptr)
         : dwg_(dwg), e_(e), d_(e.as_mleader()), c_(d_.context), tables_(tables), layout_(layout),
-          unicode_(unicode), code_page_(drawing_code_page(dwg)), ext_(extents), block_entity_(std::move(block_entity)) {
+          unicode_(unicode), code_page_(drawing_code_page(dwg)), ext_(extents), block_entity_(std::move(block_entity)),
+          g_(graphics ? *graphics : own_graphics_) {
         stack_.push_back(map);
     }
 
     std::vector<uint8_t> draw() {
-        int32_t color = entity_color();
-        g_.true_color(color);
+        BlockWalk walk;
+        begin(walk);
+        walk.run();
+        return g_.bytes();
+    }
+
+    // The drawing's first part: the content. A block's entities are left as steps of the walk; the rest of the drawing
+    // follows the last of them (finish)
+    void begin(BlockWalk& walk) {
+        g_.true_color(entity_color());
         g_.command_51();
-        if (c_.has_block && !c_.has_text) draw_block();
-        else if (c_.has_text) draw_text();
+        if (c_.has_block && !c_.has_text) {
+            draw_block(walk);
+            return;
+        }
+        if (c_.has_text) draw_text();
+        finish(walk);
+    }
+
+    // One step of the walk
+    void step(BlockWalk& walk, const DrawStep& s) {
+        switch (s.kind) {
+            case DrawStepKind::Entity:
+                draw_block_entity(walk, *s.entity, *s.host, s.top);
+                break;
+            case DrawStepKind::EntityEnd:
+                end_entity(s.trait);
+                break;
+            case DrawStepKind::Copies:
+                draw_insert_copy(walk, s);
+                break;
+            case DrawStepKind::CopyEnd:
+                pop();
+                break;
+            case DrawStepKind::InsertEnd:
+                if (s.entered) walk.active.erase(s.block);
+                draw_insert_attributes(*s.entity, *s.host);
+                break;
+            case DrawStepKind::DimensionEnd:
+                walk.active.erase(s.block);
+                pop();
+                break;
+            case DrawStepKind::BlockEnd:
+                if (s.entered) walk.active.erase(s.block);
+                pop();
+                draw_attributes(*s.block, block_matrix_);
+                finish(walk);
+                break;
+            case DrawStepKind::ArrowEnd:
+                walk.arrows.erase(s.block);
+                pop();
+                after_arrow_block();
+                end_line(c_.leaders[leader_at_].lines[line_at_]);
+                ++line_at_;
+                draw_leaders(walk);
+                break;
+            case DrawStepKind::InnerEnd:
+                break;                  // the step owns the drawer: it is released with the step
+        }
+    }
+
+private:
+    // The drawing after the content: the leaders, the underline and the frame. The leaders go on in the steps of an
+    // arrowhead's block when a line has one.
+    void finish(BlockWalk& walk) {
         // Invisible leaders: the content only — unless a line is visible by its own type (2010)
-        if (d_.leader_type == 0 && !has_visible_line()) return g_.bytes();
+        if (d_.leader_type == 0 && !has_visible_line()) return;
         g_.command_51();
         g_.layer(layer_index(e_.props.layer));
         g_.true_color(leader_color());
         g_.linetype(leader_linetype());
-        draw_leaders();
-        g_.true_color(color);
-        g_.linetype(entity_linetype());
-        g_.lineweight(0);
-        g_.marker(kAfterLeadersMarker);
-        draw_underline();
-        g_.true_color(color);
-        g_.linetype(entity_linetype());
-        g_.lineweight(e_.props.lineweight);
-        g_.command_51();
-        if (d_.text_frame && c_.has_text) draw_frame();
-        return g_.bytes();
+        leader_at_ = 0;
+        line_at_ = 0;
+        draw_leaders(walk);
     }
 
-private:
     // --- what is drawn, and its extents -----------------------------------------------
 
     void add(const Point3& p) {
-        if (ext_ && counting_) ext_->add(transform_point(stack_.back(), p));
+        if (ext_) ext_->add(transform_point(stack_.back(), p));
     }
 
     void polyline(const std::vector<Point3>& points) {
@@ -438,10 +566,16 @@ private:
 
     // --- block ------------------------------------------------------------------------
 
-    void draw_block() {
+    // The block's transform is pushed here and its entities are steps of the walk; the step BlockEnd pops it, draws the
+    // attributes and the rest of the drawing. A block already being drawn (a MULTILEADER in a block of itself) has no
+    // entities drawn.
+    void draw_block(BlockWalk& walk) {
         g_.marker(kBlockMarker);
         const Block* b = dwg_.find_block(c_.block);
-        if (!b) return;
+        if (!b) {
+            finish(walk);
+            return;
+        }
         Matrix m = block_transform(c_.block_position, c_.block_normal, c_.block_rotation, c_.block_scale,
                                    b->base_point);
         block_ = b;
@@ -452,11 +586,23 @@ private:
         int32_t by_block = resolved(c_.block_color);
         host.color = CmColor{by_block}.method() == 0xC0 ? layer_color(e_.props.layer) : by_block;
         host.lineweight = e_.props.lineweight == -2 ? -1 : e_.props.lineweight;
-        drawing_.push_back(b);
-        for (const auto& be : b->entities) draw_block_entity(be, host, true);
-        drawing_.pop_back();
-        pop();
-        draw_attributes(*b, m);
+        const BlockHost* block_host = walk.add_host(std::move(host));
+        DrawStep end;
+        end.kind = DrawStepKind::BlockEnd;
+        end.drawer = this;
+        end.block = b;
+        end.entered = walk.enter(b);
+        walk.steps.push_back(end);
+        if (!end.entered) return;
+        for (size_t i = b->entities.size(); i-- > 0;) {
+            DrawStep s;
+            s.kind = DrawStepKind::Entity;
+            s.drawer = this;
+            s.entity = &b->entities[i];
+            s.host = block_host;
+            s.top = true;
+            walk.steps.push_back(s);
+        }
     }
 
     // The block's attributes after its entities: marker 15005, then each ATTDEF's value
@@ -518,7 +664,7 @@ private:
         set_font(t, &layout_.fonts(line.style));
         g_.text(t, unicode_, code_page_);
         // Its box: as TEXT places the line, moved as the pen moved
-        if (ext_ && counting_) {
+        if (ext_) {
             TextPen plain = layout_.text_pen(line);
             Point3 shift = pen.pen - plain.pen;
             TextCorners corners = layout_.text(line);
@@ -595,13 +741,23 @@ private:
     // shell (solid) or its pattern's dashes, RAY and XLINE, LEADER and MLINE their lines,
     // TOLERANCE its texts and frame. A block's entity's extents are counted by extents.cpp
     // (top: an entity of the block the MULTILEADER draws, given to block_entity_).
-    void draw_block_entity(const Entity& be, const BlockHost& host, bool top) {
+    // An INSERT, a DIMENSION and a MULTILEADER draw blocks: their entities become steps of the walk, and the entity
+    // ends with its own step after them.
+    void draw_block_entity(BlockWalk& walk, const Entity& be, const BlockHost& host, bool top) {
         g_.true_color(drawn_color(be.props, host));
         g_.lineweight(drawn_lineweight(be.props, host));
-        bool counted = counting_;
+        // Its extents are measured by extents.cpp, whatever it holds: drawing it here would add nothing to them
         if (top && ext_ && block_entity_) {
-            if (counting_) block_entity_(be, stack_.back());
-            counting_ = false;
+            block_entity_(be, stack_.back());
+            return;
+        }
+        const bool draws_blocks = be.type == EntityType::Insert || be.type == EntityType::Dimension ||
+                                  be.type == EntityType::MLeader;
+        if (draws_blocks) {
+            DrawStep end;
+            end.kind = DrawStepKind::EntityEnd;
+            end.drawer = this;
+            walk.steps.push_back(end);
         }
         const Point3& n = be.props.extrusion;
         double thickness = be.props.thickness;
@@ -720,10 +876,10 @@ private:
                 draw_face(be.as_face3d());
                 break;
             case EntityType::Insert:
-                draw_insert(be, host);
+                start_insert(walk, be, host);
                 break;
             case EntityType::Dimension:
-                draw_dimension(be, host);
+                start_dimension(walk, be, host);
                 break;
             case EntityType::Hatch:
                 draw_hatch(be);
@@ -779,12 +935,10 @@ private:
                 }
                 break;
             }
-            case EntityType::MLeader: {
+            case EntityType::MLeader:
                 // A multileader in the block: its own graphics, in the block's transform
-                MLeaderDrawer inner(dwg_, be, tables_, layout_, unicode_, nullptr);
-                g_.append(inner.draw());
+                start_inner(walk, be);
                 break;
-            }
             case EntityType::Unknown:
                 // An entity HDxf does not know: its own proxy graphics, as AutoCAD drew it
                 g_.append(own_proxy(be));
@@ -806,8 +960,12 @@ private:
             case EntityType::TcPoint:
                 break;
         }
+        if (!draws_blocks) end_entity(trait);
+    }
+
+    // After an entity: its thickness is off again
+    void end_entity(bool trait) {
         if (trait) g_.thickness(0.0);
-        counting_ = counted;
     }
 
     // An unknown entity's proxy graphics: the 310 groups after its 92 (160 from 2010) in
@@ -983,33 +1141,74 @@ private:
     }
 
     // An INSERT in the block: its block in its transform (each copy of an array), its
-    // entities' layer 0 and ByBlock taken from the INSERT; then its attributes
-    void draw_insert(const Entity& be, const BlockHost& host) {
+    // entities' layer 0 and ByBlock taken from the INSERT; then its attributes. The copies are
+    // steps of the walk (Copies draws one and queues the next); InsertEnd draws the attributes.
+    void start_insert(BlockWalk& walk, const Entity& be, const BlockHost& host) {
         const auto& d = be.as_insert();
         BlockHost inner;
         inner.layer = same_name(be.props.layer, "0") ? host.layer : be.props.layer;
         inner.color = drawn_color(be.props, host);
         inner.lineweight = drawn_lineweight(be.props, host);
         const Block* b = dwg_.find_block(d.block_name);
-        bool busy = std::find(drawing_.begin(), drawing_.end(), b) != drawing_.end();
-        if (b && !busy) {
-            const Point3& n = be.props.extrusion;
-            double r = d.rotation * M_PI / 180.0;
-            drawing_.push_back(b);
-            for (int row = 0; row < std::max(1, d.row_count); ++row) {
-                for (int column = 0; column < std::max(1, d.column_count); ++column) {
-                    double ox = column * d.column_spacing, oy = row * d.row_spacing;
-                    Point3 at = {d.insertion_point.x + std::cos(r) * ox - std::sin(r) * oy,
-                                 d.insertion_point.y + std::sin(r) * ox + std::cos(r) * oy, d.insertion_point.z};
-                    Matrix m = block_transform(ecs::ecs_to_wcs(at, n), n, r, {d.x_scale, d.y_scale, d.z_scale},
-                                               b->base_point);
-                    push(m);
-                    for (const auto& ie : b->entities) draw_block_entity(ie, inner, false);
-                    pop();
-                }
-            }
-            drawing_.pop_back();
+        const bool entered = b && walk.enter(b);
+        if (!entered) {
+            draw_insert_attributes(be, host);
+            return;
         }
+        DrawStep end;
+        end.kind = DrawStepKind::InsertEnd;
+        end.drawer = this;
+        end.entity = &be;
+        end.host = &host;
+        end.block = b;
+        end.entered = true;
+        walk.steps.push_back(end);
+        DrawStep copies;
+        copies.kind = DrawStepKind::Copies;
+        copies.drawer = this;
+        copies.entity = &be;
+        copies.host = walk.add_host(std::move(inner));
+        copies.block = b;
+        walk.steps.push_back(copies);
+    }
+
+    // The copy `s.copy` of an INSERT's array (row by row): its transform is pushed, its block's entities and the end of
+    // the copy are steps, and the next copy follows them
+    void draw_insert_copy(BlockWalk& walk, const DrawStep& s) {
+        const auto& d = s.entity->as_insert();
+        const Block& b = *s.block;
+        const size_t columns = static_cast<size_t>(std::max(1, d.column_count));
+        const size_t total = static_cast<size_t>(std::max(1, d.row_count)) * columns;
+        if (s.copy >= total) return;
+        if (s.copy + 1 < total) {
+            DrawStep next = s;
+            next.copy = s.copy + 1;
+            walk.steps.push_back(next);
+        }
+        DrawStep end;
+        end.kind = DrawStepKind::CopyEnd;
+        end.drawer = this;
+        walk.steps.push_back(end);
+        for (size_t i = b.entities.size(); i-- > 0;) {
+            DrawStep e;
+            e.kind = DrawStepKind::Entity;
+            e.drawer = this;
+            e.entity = &b.entities[i];
+            e.host = s.host;
+            walk.steps.push_back(e);
+        }
+        const Point3& n = s.entity->props.extrusion;
+        double r = d.rotation * M_PI / 180.0;
+        const int row = static_cast<int>(s.copy / columns), column = static_cast<int>(s.copy % columns);
+        double ox = column * d.column_spacing, oy = row * d.row_spacing;
+        Point3 at = {d.insertion_point.x + std::cos(r) * ox - std::sin(r) * oy,
+                     d.insertion_point.y + std::sin(r) * ox + std::cos(r) * oy, d.insertion_point.z};
+        push(block_transform(ecs::ecs_to_wcs(at, n), n, r, {d.x_scale, d.y_scale, d.z_scale}, b.base_point));
+    }
+
+    // An INSERT's attributes, with the properties of the block they are in (host)
+    void draw_insert_attributes(const Entity& be, const BlockHost& host) {
+        const auto& d = be.as_insert();
         for (const auto& a : d.attributes) {
             if (a.data.flags & 1) continue;             // invisible
             g_.true_color(drawn_color(a.props, host));
@@ -1023,20 +1222,43 @@ private:
 
     // A DIMENSION in the block: its block, as AutoCAD's dimensions draw it (marker 0, the
     // block in its transform)
-    void draw_dimension(const Entity& be, const BlockHost& host) {
+    void start_dimension(BlockWalk& walk, const Entity& be, const BlockHost& host) {
         const auto& d = be.as_dimension();
         const Block* b = dwg_.find_block(d.block_name);
-        if (!b || std::find(drawing_.begin(), drawing_.end(), b) != drawing_.end()) return;
+        if (!b || !walk.enter(b)) return;
         BlockHost inner;
         inner.layer = same_name(be.props.layer, "0") ? host.layer : be.props.layer;
         inner.color = drawn_color(be.props, host);
         inner.lineweight = drawn_lineweight(be.props, host);
         g_.marker(0);
         push(block_transform(d.block_translation, {0.0, 0.0, 1.0}, 0.0, {1.0, 1.0, 1.0}, b->base_point));
-        drawing_.push_back(b);
-        for (const auto& ie : b->entities) draw_block_entity(ie, inner, false);
-        drawing_.pop_back();
-        pop();
+        DrawStep end;
+        end.kind = DrawStepKind::DimensionEnd;
+        end.drawer = this;
+        end.block = b;
+        walk.steps.push_back(end);
+        const BlockHost* inner_host = walk.add_host(std::move(inner));
+        for (size_t i = b->entities.size(); i-- > 0;) {
+            DrawStep s;
+            s.kind = DrawStepKind::Entity;
+            s.drawer = this;
+            s.entity = &b->entities[i];
+            s.host = inner_host;
+            walk.steps.push_back(s);
+        }
+    }
+
+    // A MULTILEADER in a block: drawn by a drawer of its own into this one's stream, in the order the commands come. It
+    // shares the walk, and so the blocks being drawn.
+    void start_inner(BlockWalk& walk, const Entity& be) {
+        auto inner = std::make_shared<MLeaderDrawer>(dwg_, be, tables_, layout_, unicode_, nullptr, identity(), nullptr,
+                                                     &g_);
+        DrawStep done;
+        done.kind = DrawStepKind::InnerEnd;
+        done.drawer = this;
+        done.keep = inner;
+        walk.steps.push_back(std::move(done));
+        inner->begin(walk);
     }
 
     // HATCH in its OCS at its elevation: solid (and gradient) a filled shell of its loops
@@ -1363,15 +1585,17 @@ private:
     // long with its tip at the origin along +X, placed at the tip pointing away from the line,
     // scaled by the arrow size; its ByBlock parts in its line's color and lineweight (the
     // leader's, or the line's own, B47; no AutoCAD file has one — a checkpoint)
-    void draw_arrow_block(const std::string& name, const Point3& tip, const Point3& dir, double size,
-                          int32_t color, int lineweight) {
-        Block builtin;
+    // The block's transform is pushed here and its entities are steps of the walk; the step ArrowEnd pops it and goes on
+    // with the line. False when nothing is drawn (no such block, or the block is an arrowhead being drawn already).
+    bool start_arrow_block(BlockWalk& walk, const std::string& name, const Point3& tip, const Point3& dir, double size,
+                           int32_t color, int lineweight) {
         const Block* b = dwg_.find_block(name);
         if (!b) {
-            if (!is_builtin_arrow(name)) return;
-            builtin = builtin_arrow_block(name);
-            b = &builtin;
+            if (!is_builtin_arrow(name)) return false;
+            walk.blocks.push_back(builtin_arrow_block(name));
+            b = &walk.blocks.back();
         }
+        if (!walk.arrows.insert(b).second) return false;
         Point3 normal = unit(cross(c_.plane_x_axis, c_.plane_y_axis));
         Point3 ax, ay;
         ecs::arbitrary_axis(normal, ax, ay);
@@ -1382,9 +1606,23 @@ private:
         host.layer = e_.props.layer;
         host.color = color;
         host.lineweight = lineweight;
+        const BlockHost* arrow_host = walk.add_host(std::move(host));
         push(m);
-        for (const auto& be : b->entities) draw_block_entity(be, host, true);
-        pop();
+        DrawStep end;
+        end.kind = DrawStepKind::ArrowEnd;
+        end.drawer = this;
+        end.block = b;
+        walk.steps.push_back(end);
+        for (size_t i = b->entities.size(); i-- > 0;) {
+            DrawStep s;
+            s.kind = DrawStepKind::Entity;
+            s.drawer = this;
+            s.entity = &b->entities[i];
+            s.host = arrow_host;
+            s.top = true;
+            walk.steps.push_back(s);
+        }
+        return true;
     }
 
     std::string arrow_of(int leader) const {
@@ -1415,71 +1653,21 @@ private:
         return false;
     }
 
-    void draw_leaders() {
-        int leader_number = 0;
-        for (const auto& leader : c_.leaders) {
-            std::string leader_arrow = arrow_of(leader_number++);
-            for (const auto& line : leader.lines) {
+    // The leaders from the leader and line the drawer is at (leader_at_, line_at_), then the rest of the drawing. An
+    // arrowhead's block is steps of the walk, so a line stops there; the step ArrowEnd goes on from the same line.
+    void draw_leaders(BlockWalk& walk) {
+        while (leader_at_ < c_.leaders.size()) {
+            const MLeaderLeader& leader = c_.leaders[leader_at_];
+            while (line_at_ < leader.lines.size()) {
+                const MLeaderLine& line = leader.lines[line_at_];
                 // 2010: the line's own properties where its override flags say so (B47; no
                 // AutoCAD file has a line with overrides — the commands around the line are a
                 // checkpoint)
-                if (line_type(line) == 0) continue;
-                int flags = line.override_flags.value_or(0);
-                bool own_color = (flags & 2) && line.color;
-                bool own_linetype = (flags & 4) && line.linetype;
-                bool own_weight = (flags & 8) && line.lineweight;
-                // What the line is drawn in: its arrowhead block's ByBlock parts too
-                int32_t line_color = own_color ? resolved(*line.color) : leader_color();
-                int line_linetype = !own_linetype ? leader_linetype()
-                                  : line.linetype->empty() || same_name(*line.linetype, "ByBlock")
-                                      ? entity_linetype()
-                                      : linetype_index(*line.linetype);
-                int line_weight = own_weight ? resolved_lineweight(*line.lineweight, e_.props.layer)
-                                             : resolved_lineweight(d_.leader_lineweight, "0");
-                if (own_color) g_.true_color(line_color);
-                if (own_linetype) g_.linetype(line_linetype);
-                if (own_weight) g_.lineweight(line_weight);
-                std::string arrow = (flags & 32) && line.arrow_block ? *line.arrow_block : leader_arrow;
-                double arrow_size = (flags & 16) && line.arrow_size ? *line.arrow_size : c_.arrow_size;
-                g_.marker(line.index + 1);
-                std::vector<Point3> points = line.vertices;
-                Point3 end;
-                if (block_leader_end(points, end)) points.push_back(end);
-                else if (leader.has_last_point) points.push_back(leader.last_point);
-                if (points.size() >= 2) {
-                    Point3 tip = points[0];
-                    Point3 dir = unit(points[1] - points[0]);
-                    double size = arrow_size;
-                    bool filled = arrow.empty() || same_name(arrow, "_ClosedFilled");
-                    // The arrowhead only on a segment at least twice its size (AutoCAD's: none
-                    // at 1.82 sizes, drawn at 2.01 — the files of test/data/README.md)
-                    if (length(points[1] - points[0]) >= 2.0 * size && !same_name(arrow, "_None")) {
-                        if (filled) {
-                            Point3 normal = unit(cross(c_.plane_x_axis, c_.plane_y_axis));
-                            Point3 side = unit(cross(dir, normal));
-                            Point3 base = tip + dir * size;
-                            g_.fill(true);
-                            polygon({base + side * (size / 6.0), tip, base - side * (size / 6.0)});
-                            g_.fill(true);
-                        } else {
-                            // The block's entities set their own traits: the line's again after them
-                            draw_arrow_block(arrow, tip, dir, size, line_color, line_weight);
-                            g_.true_color(line_color);
-                            g_.linetype(line_linetype);
-                            g_.lineweight(line_weight);
-                        }
-                        if (arrow_trims(arrow)) points[0] = tip + dir * size;
-                    }
+                if (line_type(line) != 0) {
+                    if (begin_line(walk, leader, line)) return;
+                    end_line(line);
                 }
-                g_.marker(kLineMarker + line.index);
-                std::vector<SegmentGap> gaps;
-                for (const auto& segment : line.breaks) {
-                    for (const auto& gap : segment.gaps) gaps.push_back({segment.segment, gap});
-                }
-                broken_polyline(points, gaps);
-                if (own_color) g_.true_color(leader_color());
-                if (own_linetype) g_.linetype(leader_linetype());
-                if (own_weight) g_.lineweight(e_.props.lineweight);
+                ++line_at_;
             }
             // The landing: its marker when it has a length, the line when landings are on; a
             // leader attached vertically (2010) has none, nor one of invisible leaders whose lines
@@ -1495,7 +1683,102 @@ private:
                                     gaps);
                 }
             }
+            ++leader_at_;
+            line_at_ = 0;
         }
+        finish_after_leaders();
+    }
+
+    // A leader line up to and including its arrowhead. True when the arrowhead is a block whose entities are steps of the
+    // walk: the line goes on in the step ArrowEnd.
+    bool begin_line(BlockWalk& walk, const MLeaderLeader& leader, const MLeaderLine& line) {
+        const int flags = line.override_flags.value_or(0);
+        LineInProgress& l = line_;
+        l = LineInProgress();
+        l.own_color = (flags & 2) && line.color;
+        l.own_linetype = (flags & 4) && line.linetype;
+        l.own_weight = (flags & 8) && line.lineweight;
+        // What the line is drawn in: its arrowhead block's ByBlock parts too
+        l.color = l.own_color ? resolved(*line.color) : leader_color();
+        l.linetype = !l.own_linetype ? leader_linetype()
+                   : line.linetype->empty() || same_name(*line.linetype, "ByBlock")
+                       ? entity_linetype()
+                       : linetype_index(*line.linetype);
+        l.weight = l.own_weight ? resolved_lineweight(*line.lineweight, e_.props.layer)
+                                : resolved_lineweight(d_.leader_lineweight, "0");
+        if (l.own_color) g_.true_color(l.color);
+        if (l.own_linetype) g_.linetype(l.linetype);
+        if (l.own_weight) g_.lineweight(l.weight);
+        const std::string arrow = (flags & 32) && line.arrow_block ? *line.arrow_block : arrow_of(static_cast<int>(leader_at_));
+        const double arrow_size = (flags & 16) && line.arrow_size ? *line.arrow_size : c_.arrow_size;
+        g_.marker(line.index + 1);
+        l.points = line.vertices;
+        Point3 end;
+        if (block_leader_end(l.points, end)) l.points.push_back(end);
+        else if (leader.has_last_point) l.points.push_back(leader.last_point);
+        if (l.points.size() >= 2) {
+            const Point3 tip = l.points[0];
+            const Point3 dir = unit(l.points[1] - l.points[0]);
+            const double size = arrow_size;
+            const bool filled = arrow.empty() || same_name(arrow, "_ClosedFilled");
+            // The arrowhead only on a segment at least twice its size (AutoCAD's: none
+            // at 1.82 sizes, drawn at 2.01 — the files of test/data/README.md)
+            if (length(l.points[1] - l.points[0]) >= 2.0 * size && !same_name(arrow, "_None")) {
+                l.trims = arrow_trims(arrow);
+                l.trim_to = tip + dir * size;
+                if (filled) {
+                    Point3 normal = unit(cross(c_.plane_x_axis, c_.plane_y_axis));
+                    Point3 side = unit(cross(dir, normal));
+                    Point3 base = tip + dir * size;
+                    g_.fill(true);
+                    polygon({base + side * (size / 6.0), tip, base - side * (size / 6.0)});
+                    g_.fill(true);
+                    if (l.trims) l.points[0] = l.trim_to;
+                } else {
+                    if (start_arrow_block(walk, arrow, tip, dir, size, l.color, l.weight)) return true;
+                    after_arrow_block();
+                }
+            }
+        }
+        return false;
+    }
+
+    // After an arrowhead's block: the line's own traits again (the block's entities set theirs), and the line starts
+    // where the arrowhead ends
+    void after_arrow_block() {
+        g_.true_color(line_.color);
+        g_.linetype(line_.linetype);
+        g_.lineweight(line_.weight);
+        if (line_.trims) line_.points[0] = line_.trim_to;
+    }
+
+    // A leader line after its arrowhead: the line itself, and the traits it set put back
+    void end_line(const MLeaderLine& line) {
+        const LineInProgress& l = line_;
+        g_.marker(kLineMarker + line.index);
+        std::vector<SegmentGap> gaps;
+        for (const auto& segment : line.breaks) {
+            for (const auto& gap : segment.gaps) gaps.push_back({segment.segment, gap});
+        }
+        broken_polyline(l.points, gaps);
+        if (l.own_color) g_.true_color(leader_color());
+        if (l.own_linetype) g_.linetype(leader_linetype());
+        if (l.own_weight) g_.lineweight(e_.props.lineweight);
+    }
+
+    // The drawing after the leaders: the underline and the frame
+    void finish_after_leaders() {
+        const int32_t color = entity_color();
+        g_.true_color(color);
+        g_.linetype(entity_linetype());
+        g_.lineweight(0);
+        g_.marker(kAfterLeadersMarker);
+        draw_underline();
+        g_.true_color(color);
+        g_.linetype(entity_linetype());
+        g_.lineweight(e_.props.lineweight);
+        g_.command_51();
+        if (d_.text_frame && c_.has_text) draw_frame();
     }
 
     // A line through `points` with its breaks (DIMBREAK's gaps): a gap on segment s (from
@@ -1686,15 +1969,26 @@ private:
     int code_page_;
     Extents* ext_ = nullptr;
     BlockEntityExtents block_entity_;   // the extents of a block's entities
-    bool counting_ = true;              // what is drawn counts in ext_ (not a block's entity)
-    std::vector<const Block*> drawing_; // the blocks being drawn (a block inserting itself)
     std::unique_ptr<AcisSource> acis_;
     std::vector<Matrix> stack_;         // the transforms pushed, multiplied
-    ProxyGraphics g_;
+    ProxyGraphics own_graphics_;
+    ProxyGraphics& g_;                  // what is drawn goes here: own_graphics_, or the stream of the drawer this one is in
     MTextSize text_size_;
     const Block* block_ = nullptr;
     Matrix block_matrix_{};
+    size_t leader_at_ = 0;              // the leader and its line being drawn
+    size_t line_at_ = 0;
+    LineInProgress line_;               // that line, from its start to the end of its arrowhead
 };
+
+// Does the steps, the last first; a step may add steps that are done before the ones under it
+void BlockWalk::run() {
+    while (!steps.empty()) {
+        DrawStep s = std::move(steps.back());
+        steps.pop_back();
+        s.drawer->step(*this, s);
+    }
+}
 
 } // namespace
 

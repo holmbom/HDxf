@@ -255,6 +255,9 @@ bool acis_pcurve(const AcisFile& file, size_t record, AcisSplineCurve& uv, AcisS
 void acis_spline_point(const AcisSplineCurve& c, double t, Point3& p, Point3* d1 = nullptr);
 bool acis_surface_point(const AcisSurface& s, double u, double v, Point3& p, Point3* du = nullptr, Point3* dv = nullptr);
 
+// What acis_extents takes of a body
+enum class AcisExtentsPass { Edges, Faces, All };
+
 // An affine map: WCS = m · (x, y, z, 1)
 struct AcisMap {
     double m[3][4] = {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}};
@@ -264,8 +267,11 @@ struct AcisMap {
 // (lines, ellipses, splines — an intersection curve on its surfaces), and the faces'
 // interior extremes where a surface reaches beyond its edges (sphere, torus, cone apex,
 // spline surface with its knot lines, surface of revolution, sum of curves), each within
-// the face (its loops in the surface's parameters; seams only, or no loops: all of it)
-void acis_extents(const std::vector<AcisBody>& bodies, const AcisMap& map, Extents& out);
+// the face (its loops in the surface's parameters; seams only, or no loops: all of it).
+// A face whose surface lies in `out` already is not measured. Edges: the edges only. Faces: the faces
+// only, for an `out` that holds these edges in the same coordinates already.
+void acis_extents(const std::vector<AcisBody>& bodies, const AcisMap& map, Extents& out,
+                  AcisExtentsPass pass = AcisExtentsPass::All, ExtentsCounters* counters = nullptr);
 
 // The edges of the bodies as polylines in the entity's coordinates (each edge once; a
 // MULTILEADER's block drawn in proxy graphics, B38): a straight edge its two ends, an

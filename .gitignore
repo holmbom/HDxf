@@ -13,6 +13,7 @@ doc/facit/surface_body_probe.sat
 doc/facit/*.dwl
 doc/facit/*.dwl2
 doc/facit/web/
+doc/facit/large/
 
 # Phase 9's facit runs (tools/fas9_facit_run.py): the log, the core's output and the expanded scripts; Python caches
 doc/facit/fas9_facit_log.csv

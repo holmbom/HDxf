@@ -10,6 +10,8 @@
 #include <cstring>
 #include <map>
 #include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -78,6 +80,20 @@ Matrix insert_matrix(const InsertData& d, const Point3& base) {
     const double tz = d.insertion_point.z - g * base.z;
     return {a, b, 0.0, tx, e, f, 0.0, ty, 0.0, 0.0, g, tz, 0.0, 0.0, 0.0, 1.0};
 }
+
+// What the proxy walk of a table's blocks does next. The steps are kept on the heap, so the depth of blocks inside blocks
+// is limited by memory and not by the call stack.
+enum class TableDrawStepKind {
+    Entity,         // an entity of a block drawn by an INSERT, with its traits
+    InsertEnd       // after an INSERT's block: its transform is popped, the block is free again, then its attributes
+};
+
+struct TableDrawStep {
+    TableDrawStepKind kind = TableDrawStepKind::Entity;
+    const Entity* entity = nullptr;             // Entity: the entity; InsertEnd: the INSERT
+    const Block* block = nullptr;               // the block the INSERT draws (Entity: the one the entity is in)
+    size_t index = 0;                           // Entity: its place in the block
+};
 
 class TableProxy {
 public:
@@ -281,6 +297,7 @@ private:
                 break;
             case EntityType::Insert:
                 draw_insert(e);
+                drain();
                 break;
             case EntityType::Line:
                 draw_line(e.as_line(), {0.0, 0.0, 1.0});
@@ -300,17 +317,55 @@ private:
         return fields_.count({block, index}) ? kFieldMarker : 0;
     }
 
-    // An INSERT: its block in its transform; each entity of the block with its traits first
+    // An INSERT: its block in its transform; each entity of the block with its traits first. The block's transform is
+    // pushed here and its entities are steps (drain does them); the step that ends the INSERT pops the transform and
+    // draws the attributes. A block already being drawn (a block that inserts itself) has no entities drawn. Blocks that all insert
+    // each other have more paths than can be drawn, so one met this many times is not entered any more.
     void draw_insert(const Entity& e) {
         const InsertData& d = e.as_insert();
         const Block* b = dwg_.find_block(d.block_name);
-        if (b && std::find(open_.begin(), open_.end(), b) == open_.end()) {
-            open_.push_back(b);
-            g_.push_transform(insert_matrix(d, b->base_point));
-            for (size_t i = 0; i < b->entities.size(); ++i) draw_nested(b->entities[i], b->name, i);
-            g_.pop_transform();
-            open_.pop_back();
+        const auto seen = met_.find(b);
+        const bool worn = seen != met_.end() && seen->second >= kBlockMetLimit;
+        if (!b || worn || !open_.insert(b).second) {
+            if (b && !worn) ++met_[b];
+            draw_attributes(e);
+            return;
         }
+        g_.push_transform(insert_matrix(d, b->base_point));
+        TableDrawStep end;
+        end.kind = TableDrawStepKind::InsertEnd;
+        end.entity = &e;
+        end.block = b;
+        steps_.push_back(end);
+        for (size_t i = b->entities.size(); i-- > 0;) {
+            TableDrawStep s;
+            s.kind = TableDrawStepKind::Entity;
+            s.entity = &b->entities[i];
+            s.block = b;
+            s.index = i;
+            steps_.push_back(s);
+        }
+    }
+
+    // The steps queued by the INSERTs drawn so far, the last first; a step may queue steps that are done before the ones
+    // under it
+    void drain() {
+        while (!steps_.empty()) {
+            const TableDrawStep s = steps_.back();
+            steps_.pop_back();
+            if (s.kind == TableDrawStepKind::Entity) {
+                draw_nested(*s.entity, s.block->name, s.index);
+            } else {
+                g_.pop_transform();
+                open_.erase(s.block);
+                draw_attributes(*s.entity);
+            }
+        }
+    }
+
+    // An INSERT's attributes
+    void draw_attributes(const Entity& e) {
+        const InsertData& d = e.as_insert();
         for (const auto& a : d.attributes) {
             if (a.data.flags & 1) continue;
             g_.true_color(drawn_color(a.props));
@@ -445,7 +500,10 @@ private:
     ProxyGraphics g_;
     std::vector<std::string> layers_;
     std::vector<std::string> linetypes_;
-    std::vector<const Block*> open_;
+    std::unordered_set<const Block*> open_;     // the blocks being drawn
+    std::unordered_map<const Block*, int> met_; // how many times a block was met while it was being drawn
+    static constexpr int kBlockMetLimit = 64;
+    std::vector<TableDrawStep> steps_;
 };
 
 // The entities of a block laid out again take what the old ones of the same cells had that is not geometry: their handle,
@@ -516,8 +574,12 @@ bool table_proxy_retarget(const Entity& table, std::vector<uint8_t>& stream) {
     return true;
 }
 
+// The block is not measured here: the INSERT of it is handed to the calculation under way, which measures it on its own
+// stack once this returns and adds the corners of its box. A block that comes out empty makes the calculation ask again
+// with block_box_empty set, and the caller then falls back on its grid.
 bool table_block_extents(const Entity& table, TypedExtentsSink& sink) {
-    if (table.type != EntityType::Table || !sink.drawing) return false;
+    if (table.type != EntityType::Table || !sink.drawing || !sink.defer_insert_box) return false;
+    if (sink.block_box_empty) return false;
     const TableData& t = table.as_table();
     const Block* b = sink.drawing->find_block(t.block_name);
     if (!b || b->entities.empty()) return false;
@@ -530,13 +592,7 @@ bool table_block_extents(const Entity& table, TypedExtentsSink& sink) {
     const Point3 n = unit(table.props.extrusion);
     d.insertion_point = ecs::wcs_to_ecs(t.insertion, n);
     ins.data = std::move(d);
-    Extents box;
-    entity_extents(*sink.drawing, ins, box);
-    if (box.empty()) return false;
-    for (double x : {box.min.x, box.max.x}) {
-        for (double y : {box.min.y, box.max.y}) sink.add_wcs({x, y, box.min.z});
-    }
-    if (box.max.z != box.min.z) sink.add_wcs({box.min.x, box.min.y, box.max.z});
+    sink.defer_insert_box(std::move(ins));
     return true;
 }
 

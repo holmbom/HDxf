@@ -30,7 +30,16 @@ int RawRecord::decode_code(uint16_t word, int& code_columns) {
     return word & 0x0FFF;
 }
 
+namespace {
+thread_local size_t g_raw_groups_decoded = 0;
+}
+
+namespace internal {
+size_t raw_groups_decoded() { return g_raw_groups_decoded; }
+}
+
 std::vector<DxfGroup> RawRecord::groups() const {
+    ++g_raw_groups_decoded;
     std::vector<DxfGroup> out;
     size_t pos = 0;
     while (pos + 2 <= data_.size()) {

@@ -2,6 +2,7 @@
 #include "group_codes.hpp"
 #include "text_encoding.hpp"
 #include "handles.hpp"
+#include "dxf_reader.hpp"
 #include "TypedRecordTypes.hpp"
 #include <algorithm>
 
@@ -71,14 +72,8 @@ std::vector<uint64_t> preserved_handles(const Drawing& dwg) {
     std::vector<uint64_t> out;
     auto add = [&](const RawRecord& r) {
         if (r.empty()) return;
-        for (const auto& g : r.groups()) {
-            if (g.code == 5 || g.code == 105) {
-                uint64_t v = 0;
-                if (parse_handle(g.value, v) == HandleParse::Ok) out.push_back(v);
-                return;
-            }
-            if (g.code == 100) return;
-        }
+        uint64_t v = 0;
+        if (parse_handle(DxfReader::head_handle(r), v) == HandleParse::Ok) out.push_back(v);
     };
     auto entity = [&](const Entity& e) {
         add(e.raw);

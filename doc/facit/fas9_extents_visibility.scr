@@ -1,0 +1,25 @@
+; fas9_extents_visibility.scr - facit of which entities count in $EXTMIN/$EXTMAX. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_extents_visibility.scr --input test/data/synthetic/extents_visibility.dxf
+; Every case stands on its own extreme, so the saved header says what AutoCAD counted:
+;   X max 1000     an invisible LINE in the model
+;   Y max 2000     an invisible LINE in a block of an INSERT turned 0 degrees
+;   Z max 3000     an invisible INSERT
+;   Z min -7000    an invisible LINE in a block of an INSERT turned 30 degrees
+;   X min -4000    an ATTRIB with group 60
+;   Y min -5000    an ATTRIB with the invisible flag of group 70
+;   Z max 10       a constant ATTDEF in a block
+;   Z min -6000    a constant ATTDEF with the invisible flag
+;   paper X max 500  an invisible LINE in paper space
+_.REGEN
+_.ZOOM
+_E
+_.TILEMODE
+0
+_.ZOOM
+_E
+_.TILEMODE
+1
+_.ZOOM
+_E
+;SAVE extents_visibility
+;EXPECT INSERT ATTRIB LINE

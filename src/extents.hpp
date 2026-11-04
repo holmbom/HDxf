@@ -19,11 +19,27 @@ struct Extents {
     void add(const Point3& p);
 };
 
+// How much work a calculation did: what the tests look at instead of a clock. Null where nobody asks.
+struct ExtentsCounters {
+    size_t bodies_read = 0;             // ACIS data read into bodies
+    size_t block_boxes = 0;             // blocks whose own box was computed
+    size_t insert_walks = 0;            // blocks walked for an INSERT that is turned
+    size_t faces_in_box = 0;            // faces not measured: their surface lies in the box known
+    size_t faces_measured = 0;          // faces measured exactly
+    size_t deviations = 0;              // edge deviations computed in (u, v), the costly step of a face's loops
+};
+
+// How many whole-drawing calculations this thread has started (drawing_extents)
+size_t drawing_extents_started();
+// How many calculations of any kind this thread has started: one a drawing_extents or entity_extents, however much it walks
+size_t extents_builders_started();
+
 // $EXTMIN/$EXTMAX (model space) and $PEXTMIN/$PEXTMAX (paper space) as AutoCAD keeps
 // them: model space entities, an INSERT as its block's extents transformed by the
 // insertion (AcDbBlockReference), a DIMENSION by its block, arcs and circles exact in
 // their OCS. Paper space: the entities with paper_space set, without the viewport with
-// id 1 (the paper space view itself). 3DSOLID, REGION and BODY by their B-rep, exactly
+// id 1 (the paper space view itself). An entity with group 60 set is left out, with all it inserts; so is an ATTRIB or a
+// constant ATTDEF with the invisible flag of group 70. 3DSOLID, REGION and BODY by their B-rep, exactly
 // (acis.hpp). Text by its box in its style's font (text_layout);
 // the fonts that are not found are in `warnings`. `generated` are blocks the writer made
 // (dimension blocks), named for their DIMENSION in `dim_block_names`. `replaced`: blocks of the drawing the writer writes with
@@ -31,10 +47,10 @@ struct Extents {
 void drawing_extents(const Drawing& dwg, const std::vector<Block>& generated,
                      const std::unordered_map<const Entity*, std::string>& dim_block_names,
                      Extents& model, Extents& paper, std::vector<std::string>& warnings,
-                     const std::vector<Block>* replaced = nullptr);
+                     const std::vector<Block>* replaced = nullptr, ExtentsCounters* counters = nullptr);
 
 // One entity's extents, as it stands in model or paper space
-void entity_extents(const Drawing& dwg, const Entity& e, Extents& out);
+void entity_extents(const Drawing& dwg, const Entity& e, Extents& out, ExtentsCounters* counters = nullptr);
 
 // The curve c + u cos a + v sin a (WCS) from a0 to a1 radians counterclockwise, or all of
 // it: its ends and its extremes, exactly

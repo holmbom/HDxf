@@ -93,6 +93,15 @@ struct CapturedGroup {
     }
 };
 
+// The 16-bit groups of one record type and code that were written cut to 16 bits: how many, and the first of them
+struct WrappedGroup {
+    std::string record;
+    int code = 0;
+    size_t count = 0;
+    long long first_value = 0;
+    int first_cut = 0;
+};
+
 // Writes groups as ASCII or binary DXF, the code width chosen by the caller.
 class GroupWriter {
 public:
@@ -114,8 +123,17 @@ public:
     // The first string that was not valid UTF-8, if any — the output is then not usable
     const std::string& error() const { return error_; }
 
+    // What the writing had to change: 16-bit groups beyond the range, one line per record type and code (the number of
+    // values and the first of them). Text for Drawing::warnings()
+    std::vector<std::string> wrapped_value_warnings() const;
+
     void write_string(int code, const std::string& value);
+    // A value beyond -32768 ... 32767 is written as AutoCAD writes it, cut to its low 16 bits as a signed number, in ASCII as in
+    // binary, and told by wrapped_value_warnings()
     void write_int16(int code, int value);
+    // The number of records in TABLE's 70: cut to 16 bits the same way, as AutoCAD writes it, without a warning. It is a count
+    // for the reader's convenience: every record is written, and no reader has to believe it
+    void write_table_count(int code, int count);
     void write_int32(int code, int32_t value);
     void write_double(int code, double value);
     // An integer written with the type its group code has (int16, int32, int64, bool)
@@ -145,6 +163,9 @@ public:
 
 private:
     void write_code_binary(int code);
+    // A 16-bit group, the value cut to its low 16 bits; `report` counts a value that was cut for wrapped_value_warnings()
+    void put_int16(int code, long long value, bool report);
+    void note_wrapped(int code, long long value, int16_t cut);
     // A preserved string's bytes in raw_code_page_ instead of source_code_page_ (unchanged
     // when the pages are the same or unknown, or the string has no byte above 0x7F)
     std::string convert_raw_text(const std::string& value) const;
@@ -164,6 +185,7 @@ private:
     int raw_code_page_ = 0;
     std::string error_;
     std::string record_;        // the last group 0 written
+    std::vector<WrappedGroup> wrapped_;
 };
 
 } // namespace internal

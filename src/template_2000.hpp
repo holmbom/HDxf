@@ -20,6 +20,9 @@ std::string template_text(const Drawing& dwg, bool source_binary);
 // nowhere already in the file (B19)
 std::vector<uint64_t> preserved_handles(const Drawing& dwg);
 
+// How many times this thread has decoded a preserved record's groups (RawRecord::groups())
+size_t raw_groups_decoded();
+
 // The entities of each block with a preserved record: (its BLOCK_RECORD's handle, the entity's
 // handle), sorted — taken when the drawing is read, so an entity removed from a block since
 // can be told (a MULTILEADER's proxy graphics drawn from the block, B38)

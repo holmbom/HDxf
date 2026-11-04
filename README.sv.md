@@ -3,10 +3,13 @@
 # HDxf
 
 C++-bibliotek för att läsa, skriva och bearbeta DXF-filer.
-Version 1.9.1 — läser DXF R12 … 2018, skriver R12, R13, R14, 2000, 2004, 2007, 2010, 2013 och 2018 (R12 verifierat
+Version 1.9.2 — läser DXF R12 … 2018, skriver R12, R13, R14, 2000, 2004, 2007, 2010, 2013 och 2018 (R12 verifierat
 i AutoCAD, 2000 och 2004 i DWG TrueView och ODA, 2007 … 2018 i ODA och AutoCAD:s kärna).
 Alla strängar är UTF-8 (sedan 1.1.0, se
 [Teckenkodning](#teckenkodning)). Filsökvägar är UTF-8-säkra i Windows.
+1.9.2: sparning som aldrig fastnar på solider eller nästlade block, och snabbare öppning; osynliga entiteter räknas inte i utbredningen,
+som skrivs när geometrin i en läst ritning ändrats; inget tak på blockdjup; VERTEX och SEQEND följer sin POLYLINE; proxyposter med
+AutoCAD:s extra byte läses typade; 16-bitarsvärden utanför sitt intervall skrivs som AutoCAD skriver dem, med en varning.
 1.9.1: öppen källkod under MIT — licensspärren är borta (brytande: `LicenseData`, `SetLicense()` och `HasValidLicense()` finns inte
 längre, och fil-I/O kräver ingen licens); färdigbyggda bibliotek för Windows och Linux på varje release; en R12-fil som
 lästs utan handtag skrivs tillbaka utan dem ($HANDLING 0, ingen $HANDSEED), annars kastar AutoCAD ritningen.
@@ -156,7 +159,8 @@ måttvariabler
 - ECS (entitetskoordinatsystem) med Arbitrary Axis Algorithm
 - Headervariabler (R12 och AutoCAD:s 2000-standardvärden, användarkonfigurerbara)
 - Utbredning beräknad som AutoCAD håller den (`$EXTMIN`/`$EXTMAX`, `$PEXTMIN`/`$PEXTMAX`):
-  exakt för splines, text i sina typsnitt och ACIS-solider efter sin B-rep
+  exakt för splines, text i sina typsnitt och ACIS-solider efter sin B-rep; osynliga entiteter räknas inte, och en
+  oförändrad läst ritning behåller filens värden
 
 ## Snabbstart
 
@@ -646,7 +650,7 @@ include(FetchContent)
 FetchContent_Declare(
     hdxf
     GIT_REPOSITORY https://github.com/holmbom/HDxf.git
-    GIT_TAG v1.9.1
+    GIT_TAG v1.9.2
 )
 FetchContent_MakeAvailable(hdxf)
 

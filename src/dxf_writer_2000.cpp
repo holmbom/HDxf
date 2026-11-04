@@ -283,13 +283,29 @@ bool DxfWriter::write_r2000(const Drawing& dwg) {
     generate_dim_blocks(dwg);
     // A read dimension that changed gets its block anew before the extents are taken: they count the geometry written (9.S)
     if (template_mode()) prepare_dimension_regeneration(dwg);
-    compute_extents(dwg);
+    // A drawing read from a file calculates its extents at the header, after the body, and only when something changed
+    // (decide_header_extents()); the default *Active viewport needs them before when the file has no VPORT record
+    if (header_from_file(dwg)) {
+        if (dwg.vports().empty()) calculate_extents(dwg);
+    } else {
+        compute_extents(dwg);
+    }
     prepare_r2000(dwg);
     prepare_symbol_spellings(dwg);
     prepare_dynamic_block_names(dwg);
     if (template_mode()) prepare_template(dwg);
     else prepare_owners_built_in_memory(dwg);
     if (!error_.empty()) return false;
+    // Every handle the file had is still written: a record that is as read has no pointer to one that is gone
+    nothing_removed_ = template_mode();
+    if (nothing_removed_ && !live_.empty()) {
+        for (uint64_t h : orig_handles_) {
+            if (h != 0 && live_.count(h) == 0) {
+                nothing_removed_ = false;
+                break;
+            }
+        }
+    }
 
     // The header comes first in the file but is written last: $HANDSEED and (for a
     // drawing read from a file) $VERSIONGUID depend on everything else
@@ -315,7 +331,8 @@ bool DxfWriter::write_r2000(const Drawing& dwg) {
     for (const auto& s : dwg.raw_sections()) has_header = has_header || s.name == "HEADER";
     if (template_mode() && has_header) write_header_template(dwg);
     else write_header_r2000(dwg);
-    out_ << body.str();
+    const std::string text = std::move(body).str();
+    out_.write(text.data(), static_cast<std::streamsize>(text.size()));
 
     if (dangling_ > 0) {
         warnings_.push_back(std::to_string(dangling_) +
@@ -822,7 +839,7 @@ void DxfWriter::write_table_head(const char* name, const std::string& handle, in
     write_code(5, handle);
     if (owner_groups_written()) write_code(330, "0");
     write_code(100, "AcDbSymbolTable");
-    groups_.write_int(70, count);
+    groups_.write_table_count(70, count);
     // 2013: the VPORT table's XDATA as AutoCAD 2017 writes a new drawing (meaning unknown; B59)
     // (2018 has none: ACadSharp's sample_AC1032, B70/B71)
     if (version_ == DxfVersion::R2013 && std::string(name) == "VPORT") {
@@ -2615,6 +2632,13 @@ void DxfWriter::write_polyline_r2000(const Entity& e, const std::string& owner) 
     EntityProperties child;
     child.layer = p.layer;
     child.paper_space = p.paper_space;
+    // The VERTEX records and the SEQEND have the linetype scale (48), lineweight (370) and transparency (440) of their
+    // polyline, as AutoCAD writes them; their layer, linetype and color are their own (Vertex, PolylineData::seqend_*)
+    if (version_ >= DxfVersion::R2000) {
+        child.linetype_scale = p.linetype_scale;
+        child.lineweight = p.lineweight;
+        child.transparency = p.transparency;
+    }
     for (const auto& v : d.vertices) {
         child.reactors = v.reactors;
         child.layer = v.layer.empty() ? p.layer : v.layer;
@@ -2685,9 +2709,15 @@ void DxfWriter::write_insert_r2000(const Entity& e, const std::string& owner) {
         write_xdata(attr.props.xdata);
         write_attribute_lock(attr.data.lock_position);
     }
+    // The INSERT's SEQEND has its layer, color, linetype scale and lineweight, not its linetype or transparency
     EntityProperties seqend;
     seqend.layer = p.layer;
     seqend.paper_space = p.paper_space;
+    seqend.color = p.color;
+    if (version_ >= DxfVersion::R2000) {
+        seqend.linetype_scale = p.linetype_scale;
+        seqend.lineweight = p.lineweight;
+    }
     write_entity_head("SEQEND", d.seqend_handle, p.handle, seqend);
 }
 

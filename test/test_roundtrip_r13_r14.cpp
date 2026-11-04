@@ -526,6 +526,13 @@ std::string join(const std::vector<std::string>& v) {
 // Runs `change` on every file (in both formats) and gives the result to `check`, which returns what is wrong.
 // `change` returns false for a file it does not fit. The invariants of every change are checked here
 // (the links, $HANDSEED, the file written again, the other format the same groups). Returns the files it ran on
+// The changes that move, add or remove geometry: the header's extents may follow them, and no others
+bool changes_geometry(const std::string& change) {
+    static const std::set<std::string> names = {"LINE", "VERTEX added", "VERTEX list replaced", "block added", "block removed",
+                                                "INSERT removed", "group member removed", "dimension added"};
+    return names.count(change) != 0;
+}
+
 int run_change(const std::string& name, Failures& failures, bool keeps_broken_links,
                const std::function<bool(hdxf::Drawing&)>& change,
                const std::function<std::vector<std::string>(const Run&)>& check) {
@@ -575,7 +582,8 @@ int run_change(const std::string& name, Failures& failures, bool keeps_broken_li
             std::string seed_before = seed_of(run.before), seed_after = seed_of(run.after);
             if (!seed_before.empty() && hex_value(seed_after) < hex_value(seed_before)) wrong.push_back("$HANDSEED lowered");
             for (const auto& h : run.delta.header) {
-                if (h != "$HANDSEED") wrong.push_back("header variable " + h + " changed");
+                const bool extents = h == "$EXTMIN" || h == "$EXTMAX" || h == "$PEXTMIN" || h == "$PEXTMAX";
+                if (h != "$HANDSEED" && !(extents && changes_geometry(name))) wrong.push_back("header variable " + h + " changed");
             }
             // The file read again is the same, written again the same bytes
             hdxf::Drawing again;

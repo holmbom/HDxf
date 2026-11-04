@@ -1,0 +1,5 @@
+; fas9_int16_layers.scr - facit of TABLE's 70 beyond its range: 40 000 layers and layer 0. AutoCAD writes every layer, and the count cut to 16 bits, as a signed
+; number, in ASCII and binary alike. The core may crash when it quits, after saving. Run it as tools/gen_int16_limits.py says.
+_.REGEN
+;SAVE int16_layers
+;EXPECT LINE

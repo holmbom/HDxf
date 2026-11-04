@@ -61,7 +61,7 @@ out.save_as("new.dxf", hdxf::DxfFormat::Binary);
 include(FetchContent)
 FetchContent_Declare(hdxf
     GIT_REPOSITORY https://github.com/holmbom/HDxf.git
-    GIT_TAG        v1.9.1)   # or another release tag
+    GIT_TAG        v1.9.2)   # or another release tag
 FetchContent_MakeAvailable(hdxf)
 
 target_link_libraries(myapp PRIVATE hdxf::hdxf)   # hdxf::acis for the ACIS body builder

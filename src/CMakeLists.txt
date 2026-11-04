@@ -41,6 +41,7 @@ add_library(hdxf
     mtext_data.cpp
     drawing_mtext.cpp
     drawing_attribute.cpp
+    drawing_polyline.cpp
     drawing_object_fields.cpp
     attribute_mirror.cpp
     dimension_block.cpp

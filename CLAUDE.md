@@ -5,7 +5,7 @@ HDXF is a C++ library for reading, writing, and manipulating DXF (Drawing Exchan
 The library supports the full DXF standard including 2D and 3D entities, text, colors, layers,
 blocks, styles, and all standard DXF sections. Both ASCII and Binary DXF formats are supported.
 
-**Version: 1.9.1 — reads R12 … 2018 (AC1009–AC1032, ASCII and binary), writes R12, R13, R14, 2000,
+**Version: 1.9.2 — reads R12 … 2018 (AC1009–AC1032, ASCII and binary), writes R12, R13, R14, 2000,
 2004, 2007, 2010, 2013 and 2018. Phases 0–7 and 9 of the multi-version work (TODO.md) are done; phase 8 remains.**
 R12: all 14 entity types, 8 table types, header variables, blocks, attributes, dimensions,
 viewports, XDATA, and both ASCII/Binary formats pass AutoCAD validation. 2000: the R12
@@ -108,7 +108,7 @@ include(FetchContent)
 FetchContent_Declare(
     hdxf
     GIT_REPOSITORY https://github.com/holmbom/HDxf.git
-    GIT_TAG v1.9.1
+    GIT_TAG v1.9.2
 )
 FetchContent_MakeAvailable(hdxf)
 
@@ -271,6 +271,25 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   facit a branch is "ej testat" (plan, per family; SECTION types in R13/R14 "not established"), never called verified. Checked by
   `tools/fas9_verify_batch.py` (AutoCAD 2025's core + ODA + ezdxf; 3 851 originals, 15 051 outputs); known differences from AutoCAD,
   not fixed: README ("Known differences") and the plan's 9.S outcome
+- Extents (`src/extents.cpp`, `src/acis_extents.cpp`): an invisible entity (60 = 1) does not count, an invisible INSERT with all it
+  holds, an ATTRIB with 60 or 70 bit 1 and a constant invisible ATTDEF in a block neither; `entity_extents()` answers false for one.
+  A drawing read from a file keeps the file's `$EXTMIN`/`$EXTMAX` and calculates nothing while nothing changed. When something did,
+  a space with an entity removed gets the drawing's extents, any other the drawing's when they differ from those of the drawing as
+  read; a value the program set wins. R12 writes its body before its header, as the other versions do
+- No limit on block depth: extents, MULTILEADER graphics and table graphics walk blocks with stacks of their own. An INSERT or
+  MULTILEADER of a block on the active path ends its branch, what stands beside it stays. Blocks that all insert each other have more
+  paths than can be walked: the counts `kCutBoxesComputed`, `kCutWalks`, `kCutLeaders` and `kBlockMetLimit` end such a walk; a file
+  AutoCAD can make has no cycle
+- A POLYLINE's VERTEX and SEQEND are written with the layer, linetype and color the polyline gives them (`src/drawing_polyline.cpp`):
+  read from a file, a value that was the polyline's as read follows it; made by the program, an empty linetype and a ByLayer color
+  are the polyline's. The fields hold those values only during a save. From 2000 they have the polyline's 48, 370 and 440; an
+  INSERT's SEQEND has its layer, color, 48 and 370
+- 16-bit groups beyond their range are written as AutoCAD writes them, cut to 16 bits as a signed number in ASCII and binary, and
+  `warnings()` says so; TABLE's 70 is cut without a word. There is no maximum: every record is written
+- A record that is the same as the original's is written from its preserved record when `merge_record()` would write it unchanged
+  (`written_as_read()`); anything unsure goes through `merge_record()`
+- A proxy's length in bits (93, 161, 96, 162) is met by the bytes the bits need, or by one more when the bits fill whole bytes, which
+  is kept as it is; a length in bytes (92, 160) is exact
 - The rule for anything 2000+: follow what AutoCAD writes and Autodesk's DXF reference —
   no own workarounds (Erik, 2026-10-23)
 - ACIS body builder (since 1.7.2, plan `doc/plans/2026-10-26-acis-bygg.md`, format in

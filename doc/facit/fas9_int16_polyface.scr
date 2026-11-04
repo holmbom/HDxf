@@ -1,0 +1,5 @@
+; fas9_int16_polyface.scr - facit of 16-bit groups beyond their range: a polyface with 40 000 vertices. AutoCAD writes groups 71 ... 74 cut to 16 bits, as
+; signed numbers, in ASCII and binary alike. Run it as tools/gen_int16_limits.py says.
+_.REGEN
+;SAVE int16_polyface
+;EXPECT POLYLINE VERTEX

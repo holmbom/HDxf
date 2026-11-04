@@ -2,6 +2,7 @@
 #include "handles.hpp"
 #include "mleader.hpp"
 #include "TypedRecordTypes.hpp"
+#include "number_parse.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
@@ -105,7 +106,7 @@ void parse_xdata_groups(const std::vector<DxfGroup>& g, size_t start,
 }
 
 int to_int(const std::string& s) { return std::atoi(s.c_str()); }
-double to_double(const std::string& s) { return std::atof(s.c_str()); }
+double to_double(const std::string& s) { return parse_double_compat(s); }
 
 // ---------------------------------------------------------------------------
 // Object types
@@ -407,7 +408,7 @@ GeoDataData parse_geodata(const std::vector<DxfGroup>& g, size_t body, size_t xd
     auto code = [&]() { return i < xdata ? g[i].code : -1; };
     auto text = [&]() { return g[i++].value; };
     auto integer = [&]() { return to_int(g[i++].value); };
-    auto num = [&]() { return std::atof(g[i++].value.c_str()); };
+    auto num = [&]() { return parse_double_compat(g[i++].value); };
     auto point3 = [&](int c, Point3& p) {
         if (code() == c) p.x = num();
         if (code() == c + 10) p.y = num();
@@ -488,10 +489,10 @@ GeoDataData parse_geodata(const std::vector<DxfGroup>& g, size_t body, size_t xd
             const DxfGroup& x = g[i];
             switch (x.code) {
                 case 95:  d.scale_estimation = to_int(x.value); break;
-                case 141: d.user_scale = std::atof(x.value.c_str()); break;
+                case 141: d.user_scale = parse_double_compat(x.value); break;
                 case 294: d.sea_level_correction = to_int(x.value) != 0; break;
-                case 142: d.sea_level_elevation = std::atof(x.value.c_str()); break;
-                case 143: d.projection_radius = std::atof(x.value.c_str()); break;
+                case 142: d.sea_level_elevation = parse_double_compat(x.value); break;
+                case 143: d.projection_radius = parse_double_compat(x.value); break;
             }
             if (x.code == 4) { ++i; break; }
         }

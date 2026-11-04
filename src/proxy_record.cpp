@@ -113,8 +113,13 @@ std::vector<XdataList> xdata_with_class_name(const std::vector<XdataList>& xdata
 // Reading
 // ---------------------------------------------------------------------------
 
-// Bits → bytes
-size_t bytes_for(uint64_t bits) { return static_cast<size_t>((bits + 7) / 8); }
+// Whether `byte_count` bytes hold `bits` bits as a length counted in bits is written: the bytes the bits need, or, when the
+// bits fill whole bytes, one byte more (AutoCAD writes that form; the extra byte is kept as it is and is not counted)
+bool bit_length_agrees(size_t byte_count, uint64_t bits) {
+    const uint64_t whole = bits / 8;
+    if (byte_count == whole + (bits % 8 != 0 ? 1 : 0)) return true;
+    return bits > 0 && bits % 8 == 0 && byte_count == whole + 1;
+}
 
 // The class data of a proxy: the groups of the subclass (AcDbProxyEntity or AcDbProxyObject, or the
 // AcDbZombie… name R13 files of other producers use), in the order AutoCAD writes them and in the order of the
@@ -192,7 +197,9 @@ bool read_proxy_class(const RecordView& view, TypedReadContext& context, const c
                 if (bits > 0xFFFFFFFFull) { c.fail("the graphics' length does not fit 32 bits"); break; }
                 c.bytes(in_bytes ? 310 : 311, out.graphics);
                 if (!c.ok()) break;
-                if (out.graphics.size() != bytes_for(bits)) {
+                // 92 and 160 count bytes, exactly; 96 and 162 count bits, which may have the extra byte
+                const bool graphics_agree = in_bytes ? out.graphics.size() == count : bit_length_agrees(out.graphics.size(), bits);
+                if (!graphics_agree) {
                     c.fail("the graphics have " + std::to_string(out.graphics.size()) + " bytes, " + std::to_string(code) +
                            " says " + std::to_string(count) + (in_bytes ? " bytes" : " bits"));
                     break;
@@ -212,7 +219,7 @@ bool read_proxy_class(const RecordView& view, TypedReadContext& context, const c
                 }
                 c.bytes(310, out.data);
                 if (!c.ok()) break;
-                if (out.data.size() != bytes_for(static_cast<uint64_t>(raw))) {
+                if (!bit_length_agrees(out.data.size(), static_cast<uint64_t>(raw))) {
                     c.fail("the data have " + std::to_string(out.data.size()) + " bytes, " + std::to_string(code) +
                            " says " + std::to_string(raw) + " bits");
                     break;
@@ -399,7 +406,7 @@ int32_t class_id_to_write(RecordWriter& w, const ProxyClassData& p) {
 }
 
 bool lengths_agree(RecordWriter& w, const std::string& what, const std::vector<uint8_t>& bytes, uint32_t bits) {
-    if (bytes.size() == bytes_for(bits)) return true;
+    if (bit_length_agrees(bytes.size(), bits)) return true;
     w.fail(what + ": " + std::to_string(bytes.size()) + " bytes do not hold " + std::to_string(bits) + " bits");
     return false;
 }

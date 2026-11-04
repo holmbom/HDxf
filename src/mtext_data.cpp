@@ -1,5 +1,6 @@
 #include "mtext_data.hpp"
 #include "group_io.hpp"
+#include "number_parse.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -39,14 +40,14 @@ static bool take_column_info(std::vector<XdataList>& xdata, MTextColumns& column
                 case 79: ok = value.code == 1070; c.auto_height = std::atoi(value.value.c_str()) != 0; break;
                 case 76: ok = value.code == 1070; c.count = std::atoi(value.value.c_str()); break;
                 case 78: ok = value.code == 1070; c.reversed = std::atoi(value.value.c_str()) != 0; break;
-                case 48: ok = value.code == 1040; c.width = std::atof(value.value.c_str()); break;
-                case 49: ok = value.code == 1040; c.gutter = std::atof(value.value.c_str()); break;
+                case 48: ok = value.code == 1040; c.width = parse_double_compat(value.value); break;
+                case 49: ok = value.code == 1040; c.gutter = parse_double_compat(value.value); break;
                 case 50: {
                     ok = value.code == 1070;
                     int n = std::atoi(value.value.c_str());
                     for (int h = 0; h < n && ok; ++h) {
                         if (i >= end || list.items[i].code != 1040) { ok = false; break; }
-                        c.heights.push_back(std::atof(list.items[i++].value.c_str()));
+                        c.heights.push_back(parse_double_compat(list.items[i++].value));
                     }
                     break;
                 }
@@ -68,29 +69,29 @@ static bool take_column_info(std::vector<XdataList>& xdata, MTextColumns& column
 
 bool mtext_apply_group(MTextData& d, MTextParseState& state, int code, const std::string& value) {
     switch (code) {
-        case 10: d.insertion_point.x = std::atof(value.c_str()); break;
-        case 20: d.insertion_point.y = std::atof(value.c_str()); break;
-        case 30: d.insertion_point.z = std::atof(value.c_str()); break;
-        case 40: d.height = std::atof(value.c_str()); break;
-        case 41: d.reference_width = std::atof(value.c_str()); break;
-        case 46: d.defined_height = std::atof(value.c_str()); break;    // 2007+
+        case 10: d.insertion_point.x = parse_double_compat(value); break;
+        case 20: d.insertion_point.y = parse_double_compat(value); break;
+        case 30: d.insertion_point.z = parse_double_compat(value); break;
+        case 40: d.height = parse_double_compat(value); break;
+        case 41: d.reference_width = parse_double_compat(value); break;
+        case 46: d.defined_height = parse_double_compat(value); break;    // 2007+
         case 71: d.attachment = std::atoi(value.c_str()); break;
         case 72: d.drawing_direction = std::atoi(value.c_str()); break;
         case 3:  state.parts += value; break;
         case 1:  state.last = value; break;
         case 7:  d.style = value; break;
-        case 11: d.x_axis_direction.x = std::atof(value.c_str()); state.by_rotation = false; break;
-        case 21: d.x_axis_direction.y = std::atof(value.c_str()); break;
-        case 31: d.x_axis_direction.z = std::atof(value.c_str()); break;
-        case 50: state.rotation = std::atof(value.c_str()); state.by_rotation = true; break;
+        case 11: d.x_axis_direction.x = parse_double_compat(value); state.by_rotation = false; break;
+        case 21: d.x_axis_direction.y = parse_double_compat(value); break;
+        case 31: d.x_axis_direction.z = parse_double_compat(value); break;
+        case 50: state.rotation = parse_double_compat(value); state.by_rotation = true; break;
         case 73: d.line_spacing_style = std::atoi(value.c_str()); break;
-        case 44: d.line_spacing_factor = std::atof(value.c_str()); break;
+        case 44: d.line_spacing_factor = parse_double_compat(value); break;
         // 2004+: the background fill
         case 90: d.background.flags = std::atoi(value.c_str()); break;
         case 63: d.background.color.aci = std::atoi(value.c_str()); break;
         case 421: d.background.color.rgb = std::atoi(value.c_str()); break;
         case 431: d.background.color.name = value; break;    // decoded (only 1 and 3 wait)
-        case 45: d.background.scale = std::atof(value.c_str()); break;
+        case 45: d.background.scale = parse_double_compat(value); break;
         case 441: d.background.transparency.raw = std::atoi(value.c_str()); break;
         case 42: break;                 // the text's width and height as drawn:
         case 43: break;                 // read-only, AutoCAD computes them
@@ -115,7 +116,7 @@ void mtext_apply_embedded_group(MTextData& d, MTextParseState& state, int code, 
     if (!d.columns) d.columns.emplace();
     MTextEmbedded& e = *d.embedded;
     MTextColumns& c = *d.columns;
-    double v = std::atof(value.c_str());
+    double v = parse_double_compat(value);
     int i = std::atoi(value.c_str());
     switch (code) {
         case 70: d.attachment = i; break;
@@ -192,7 +193,7 @@ static void erase_block(std::vector<XdataList>& xdata, size_t list, size_t begin
 
 static bool item_number(const XdataItem& it, int code, double& out) {
     if (it.code != code) return false;
-    out = std::atof(it.value.c_str());
+    out = parse_double_compat(it.value);
     return true;
 }
 

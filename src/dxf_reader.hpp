@@ -26,6 +26,10 @@ public:
     bool binary() const { return groups_.binary(); }
     const std::string& error() const { return error_; }
 
+    // The handle (5, or 105 in a table record) of a record's head, before its first subclass, as written; empty = none.
+    // Reads the record's bytes in place, without building its groups
+    static std::string head_handle(const RawRecord& record);
+
 private:
     bool read_group(GroupCode& gc);     // skips comments (999)
     void push_back(const GroupCode& gc);

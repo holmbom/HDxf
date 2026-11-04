@@ -1,0 +1,103 @@
+; fas9_polyline_owner.scr - facit of what a POLYLINE's VERTEX and SEQEND and an INSERT's ATTRIB and SEQEND have when the owner is changed. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_polyline_owner.scr
+; Files (acad_<version>_dxf_<theme>[_<change>][_bin].dxf):
+;   polyline_owner               a 3D polyline, a 2D polyline, a polygon mesh, a polyface mesh, an INSERT with an ATTRIB
+;   polyline_owner recolored     all of them color 3
+;   polyline_owner relinetyped   all of them linetype DASHED
+;   polyline_owner relayered     all of them layer LA
+;   polyline_owner reweighted    all of them lineweight 0.5, linetype scale 2, transparency 40
+_.PLINETYPE
+0
+_.ATTREQ
+0
+_.-LAYER
+_M
+LA
+
+_.-LINETYPE
+_L
+DASHED
+acad.lin
+
+_.CLAYER
+0
+_.3DPOLY
+0,0,0
+10,0,0
+10,10,5
+
+_.PLINE
+20,0
+30,0
+30,10
+
+_.3DMESH
+2
+2
+40,0,0
+50,0,0
+40,10,0
+50,10,5
+_.PFACE
+60,0,0
+70,0,0
+70,10,0
+
+1
+2
+3
+
+
+_.-ATTDEF
+
+T1
+P
+D
+80,0,0
+2.5
+0
+_.-BLOCK
+BA
+80,0,0
+_L
+
+_.-INSERT
+BA
+80,0,0
+1
+1
+0
+;SAVE polyline_owner
+;EXPECT POLYLINE VERTEX SEQEND INSERT ATTRIB
+_.CHPROP
+_ALL
+
+_C
+3
+
+;SAVE polyline_owner recolored
+_.CHPROP
+_ALL
+
+_LT
+DASHED
+
+;SAVE polyline_owner relinetyped
+_.CHPROP
+_ALL
+
+_LA
+LA
+
+;SAVE polyline_owner relayered
+_.CHPROP
+_ALL
+
+_LW
+0.5
+_S
+2
+_TR
+40
+
+;SAVE polyline_owner reweighted

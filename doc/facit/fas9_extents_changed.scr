@@ -1,0 +1,77 @@
+; fas9_extents_changed.scr - facit of $EXTMIN/$EXTMAX after a drawing has changed, each state saved after the one before. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_extents_changed.scr
+; Files (acad_<version>_dxf_<theme>[_<change>][_bin].dxf):
+;   extents_changed            two lines, a circle, an INSERT of a block with one line at 200,200
+;   extents_changed moved      the INSERT moved 100 along X
+;   extents_changed block      the block's line replaced by a longer one
+;   extents_changed removed    the INSERT erased
+;   extents_changed added      a line added towards -50,-50
+_.LINE
+0,0,0
+100,100,0
+
+_.LINE
+10,10,0
+20,20,0
+
+_.CIRCLE
+50,50,0
+10
+_.LINE
+0,0,0
+5,5,0
+
+_.-BLOCK
+BX
+0,0,0
+_L
+
+_.-INSERT
+BX
+200,200,0
+1
+1
+0
+_.REGEN
+_.ZOOM
+_E
+;SAVE extents_changed
+;EXPECT INSERT LINE CIRCLE
+_.MOVE
+_L
+
+0,0,0
+100,0,0
+_.REGEN
+_.ZOOM
+_E
+;SAVE extents_changed moved
+_.LINE
+0,0,0
+50,0,0
+
+_.-BLOCK
+BX
+_Y
+0,0,0
+_L
+
+_.REGEN
+_.ZOOM
+_E
+;SAVE extents_changed block
+_.ERASE
+_L
+
+_.REGEN
+_.ZOOM
+_E
+;SAVE extents_changed removed
+_.LINE
+-50,-50,0
+0,0,0
+
+_.REGEN
+_.ZOOM
+_E
+;SAVE extents_changed added

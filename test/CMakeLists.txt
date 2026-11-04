@@ -185,6 +185,17 @@ add_executable(hdxf_tests
     # 9.18 Map, TC and ZWM
     test_map_types.cpp
     test_tc_zwm_types.cpp
+    test_acis_extents_limits.cpp
+    test_extents_performance.cpp
+    test_deep_blocks.cpp
+    test_extents_visibility.cpp
+    test_deep_block_graphics.cpp
+    test_proxy_lengths.cpp
+    test_number_parse.cpp
+    test_binary_int16.cpp
+    test_extents_header.cpp
+    test_preserved_fast_path.cpp
+    test_polyline_properties.cpp
 )
 
 target_link_libraries(hdxf_tests PRIVATE hdxf::hdxf)

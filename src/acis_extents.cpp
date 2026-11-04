@@ -1152,6 +1152,181 @@ bool relax(SurfaceEquation& s1, SurfaceEquation& s2, const Point3& p0, const Poi
 }
 
 // ---------------------------------------------------------------------------
+// Rational Bézier spans of a curve
+// ---------------------------------------------------------------------------
+
+using Homogeneous = std::array<double, 4>;     // w x, w y, w z, w
+
+// The Bézier points of the span [a, b] (in span k) of a B-spline with homogeneous points
+// ctrl: the blossom at (a … a, b … b)
+std::vector<Homogeneous> bezier_span(const std::vector<Homogeneous>& ctrl, const std::vector<double>& knots,
+                                     int p, size_t k, double a, double b) {
+    std::vector<Homogeneous> out(static_cast<size_t>(p) + 1);
+    for (int j = 0; j <= p; ++j) {
+        std::vector<Homogeneous> d(static_cast<size_t>(p) + 1);
+        for (int i = 0; i <= p; ++i) d[static_cast<size_t>(i)] = ctrl[k - p + i];
+        for (int r = 1; r <= p; ++r) {
+            double t = r <= p - j ? a : b;
+            for (int i = p; i >= r; --i) {
+                size_t g = k - p + i;
+                double den = knots[g + p - r + 1] - knots[g];
+                double alpha = den == 0.0 ? 0.0 : (t - knots[g]) / den;
+                for (int c = 0; c < 4; ++c) {
+                    d[static_cast<size_t>(i)][c] = (1.0 - alpha) * d[static_cast<size_t>(i) - 1][c] + alpha * d[static_cast<size_t>(i)][c];
+                }
+            }
+        }
+        out[static_cast<size_t>(j)] = d[static_cast<size_t>(p)];
+    }
+    return out;
+}
+
+// A piece of a curve as a rational Bézier curve: its homogeneous points, and the curve's
+// parameters at its ends (an ellipse's arc is not parameterized by its angle)
+struct CurveSpan {
+    std::vector<Homogeneous> net;
+    double t0 = 0.0;
+    double t1 = 0.0;
+};
+
+// The curve from parameter lo to hi as rational Bézier spans, exactly: a spline's knot
+// spans (the blossom), an ellipse's arcs of at most a quarter turn (c + (M cos m + N sin m)/
+// cos h between the ends, weight cos h, for the arc m ± h), a straight's segment
+std::vector<CurveSpan> curve_spans(const AcisCurve& c, double lo, double hi) {
+    std::vector<CurveSpan> out;
+    switch (c.type) {
+        case AcisCurveType::Straight: {
+            Point3 a, b;
+            acis_curve_point(c, lo, a);
+            acis_curve_point(c, hi, b);
+            out.push_back({{{a.x, a.y, a.z, 1.0}, {b.x, b.y, b.z, 1.0}}, lo, hi});
+            break;
+        }
+        case AcisCurveType::Ellipse: {
+            int pieces = std::max(1, static_cast<int>(std::ceil((hi - lo) / (kPi / 2.0) - 1e-12)));
+            Point3 minor = mul(cross(c.axis, c.major), c.ratio);
+            for (int i = 0; i < pieces; ++i) {
+                double a = lo + (hi - lo) * i / pieces;
+                double b = lo + (hi - lo) * (i + 1) / pieces;
+                double h = 0.5 * (b - a), m = 0.5 * (a + b);
+                Point3 pa, pb;
+                acis_curve_point(c, a, pa);
+                acis_curve_point(c, b, pb);
+                double w = std::cos(h);
+                Point3 mid = add(c.origin, mul(add(mul(c.major, std::cos(m)), mul(minor, std::sin(m))), 1.0 / w));
+                out.push_back({{{pa.x, pa.y, pa.z, 1.0}, {mid.x * w, mid.y * w, mid.z * w, w}, {pb.x, pb.y, pb.z, 1.0}},
+                               a, b});
+            }
+            break;
+        }
+        case AcisCurveType::Spline: {
+            const AcisSplineCurve& s = c.spline;
+            double a = c.reversed ? -hi : lo;
+            double b = c.reversed ? -lo : hi;
+            a = std::max(a, curve_lo(s));
+            b = std::min(b, curve_hi(s));
+            std::vector<Homogeneous> h(s.points.size());
+            for (size_t i = 0; i < h.size(); ++i) {
+                double w = i < s.weights.size() ? s.weights[i] : 1.0;
+                h[i] = {s.points[i].x * w, s.points[i].y * w, s.points[i].z * w, w};
+            }
+            for (size_t k = static_cast<size_t>(s.degree); k < s.points.size(); ++k) {
+                double ka = std::max(s.knots[k], a);
+                double kb = std::min(s.knots[k + 1], b);
+                if (kb <= ka) continue;
+                CurveSpan span;
+                span.net = bezier_span(h, s.knots, s.degree, k, ka, kb);
+                span.t0 = c.reversed ? -ka : ka;
+                span.t1 = c.reversed ? -kb : kb;
+                out.push_back(std::move(span));
+            }
+            break;
+        }
+        default:
+            break;
+    }
+    return out;
+}
+
+// Whether the edge between its curve parameters ta and tb lies within `limit` of one point:
+// the box of the Bézier control points of that piece of the curve (all weights positive and
+// finite, so the piece lies in their hull) has a diagonal of at most `limit`. A straight
+// piece is its two ends. A curve without such a hull is not small.
+bool edge_span_is_small(const AcisEdge& e, const AcisCurve& c, double ta, double tb, double limit) {
+    if (!(limit >= 0.0)) return false;
+    double lo = std::min(ta, tb);
+    double hi = std::max(ta, tb);
+    if (!std::isfinite(lo) || !std::isfinite(hi)) return false;
+    bool any = false;
+    Point3 box_lo, box_hi;
+    auto take = [&](const Point3& p) {
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) return false;
+        if (!any) {
+            box_lo = p;
+            box_hi = p;
+            any = true;
+        } else {
+            box_lo = {std::min(box_lo.x, p.x), std::min(box_lo.y, p.y), std::min(box_lo.z, p.z)};
+            box_hi = {std::max(box_hi.x, p.x), std::max(box_hi.y, p.y), std::max(box_hi.z, p.z)};
+        }
+        return true;
+    };
+    switch (c.type) {
+        case AcisCurveType::Straight:
+            if (!take(edge_point(e, c, ta)) || !take(edge_point(e, c, tb))) return false;
+            break;
+        case AcisCurveType::Ellipse:
+        case AcisCurveType::Spline: {
+            if (c.type == AcisCurveType::Ellipse && hi - lo > kTwoPi + 1e-9) return false;
+            // A reversed spline's own parameter is the negative of the edge's
+            std::vector<CurveSpan> spans = c.type == AcisCurveType::Spline && c.reversed ? curve_spans(c, -hi, -lo)
+                                                                                         : curve_spans(c, lo, hi);
+            if (spans.empty()) {
+                // Nothing of the curve between the parameters: the clamped point
+                if (!take(edge_point(e, c, lo)) || !take(edge_point(e, c, hi))) return false;
+                break;
+            }
+            for (const auto& span : spans) {
+                for (const auto& h : span.net) {
+                    if (!(h[3] > 0.0) || !std::isfinite(h[3])) return false;
+                    if (!take({h[0] / h[3], h[1] / h[3], h[2] / h[3]})) return false;
+                }
+            }
+            break;
+        }
+        default:
+            return false;
+    }
+    return any && norm(sub(box_hi, box_lo)) <= limit;
+}
+
+// The distance below which two points of a body are one point: a billionth of the diagonal of
+// the box of its vertices, but not below a few units of the last place of its largest
+// coordinate. 0 when there is no vertex or a coordinate is not finite.
+double same_point_of(const AcisBody& body) {
+    bool any = false;
+    Point3 lo, hi;
+    double largest = 0.0;
+    auto take = [&](const Point3& p) {
+        if (!any) {
+            lo = p;
+            hi = p;
+            any = true;
+        } else {
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
+        }
+        largest = std::max({largest, std::fabs(p.x), std::fabs(p.y), std::fabs(p.z)});
+    };
+    for (const auto& e : body.edges) {
+        if (e.has_start) take(e.start);
+        if (e.has_end) take(e.end);
+    }
+    if (!any) return 0.0;
+    double same = std::max(1e-9 * norm(sub(hi, lo)), 8.0 * std::numeric_limits<double>::epsilon() * largest);
+    return std::isfinite(same) ? same : 0.0;
+}
+// ---------------------------------------------------------------------------
 // A face in its surface's parameters
 // ---------------------------------------------------------------------------
 
@@ -1214,6 +1389,19 @@ bool segments_cross(const UvPoint& r, const UvPoint& q, const UvPoint& a, const 
     return (orient(a, b, r) > 0.0) != (orient(a, b, q) > 0.0);
 }
 
+// What the refinement of one piece of a segment has found, kept for every query: whether the
+// middle is computed, its deviation and place in (u, v), the indices of the two halves, and
+// whether the piece is one point in 3D (-1 not asked). It depends on the segment and the
+// path to the piece only. The halves are indices into the segment's tree.
+struct RefineNode {
+    bool known = false;
+    double dev = 0.0;
+    UvPoint middle;
+    int left = -1;
+    int right = -1;
+    int point = -1;
+};
+
 // The face's loops are sampled (the polylines, for speed) and every decision is exact: where
 // a point it decides lies within the sampling's distance of a segment (its band), the edge
 // is followed there on its own curve — halved, mapped point by point — until the point is
@@ -1222,7 +1410,8 @@ bool segments_cross(const UvPoint& r, const UvPoint& q, const UvPoint& a, const 
 // bits. A point on a loop to the last bits is on the face.
 class FaceRegion {
 public:
-    FaceRegion(const AcisBody& body, const AcisFace& face, const SurfaceParam& sp);
+    FaceRegion(const AcisBody& body, const AcisFace& face, const SurfaceParam& sp, double same_point,
+               ExtentsCounters* counters);
 
     bool everywhere() const { return everywhere_; }
     bool usable() const { return usable_; }
@@ -1247,9 +1436,12 @@ private:
     // a half and three quarters
     double deviation(const SegmentSource& s, double ta, double tb, const UvPoint& a, const UvPoint& b,
                      UvPoint* middle = nullptr) const;
-    // The edge between ta and tb as pieces, split where near holds within the edge's slack
-    void refine(const SegmentSource& s, double ta, double tb, const UvPoint& a, const UvPoint& b, const UvNear& near,
-                std::vector<UvPiece>& out, int depth, double above) const;
+    // The edge between ta and tb as pieces, split where near holds within the edge's slack;
+    // `node` is the piece's place in the segment's refinement tree
+    void refine(size_t segment, size_t node, const SegmentSource& s, double ta, double tb, const UvPoint& a,
+                const UvPoint& b, const UvNear& near, std::vector<UvPiece>& out, int depth, double above) const;
+    // Whether the piece of the edge between ta and tb is one point in 3D (asked once per node)
+    bool piece_is_point(size_t segment, size_t node, const SegmentSource& s, double ta, double tb) const;
     // Segment i moved by (du, dv) (a periodic image) as the pieces near needs
     void pieces(size_t i, double du, double dv, const UvNear& near, std::vector<UvPiece>& out) const;
     // The periodic images k of a segment that may reach [lo, hi] in a periodic coordinate
@@ -1270,13 +1462,17 @@ private:
     bool everywhere_ = false;
     bool usable_ = true;
     double face_sign_ = 1.0;
+    double same_point_ = 0.0;           // two points of an edge this near are one point
+    ExtentsCounters* counters_ = nullptr;
+    mutable std::vector<std::vector<RefineNode>> refine_tree_;     // per segment
 };
 
 // A seam is an edge the face's loops run along both ways (a closed surface's seam, or a
 // slit): the face lies on both its sides, and a path crosses it twice. A face bounded by
 // seams only, or without loops, is the whole surface (ACIS).
-FaceRegion::FaceRegion(const AcisBody& body, const AcisFace& face, const SurfaceParam& sp)
-    : sp_(sp), pu_(sp.period_u()), pv_(sp.period_v()) {
+FaceRegion::FaceRegion(const AcisBody& body, const AcisFace& face, const SurfaceParam& sp, double same_point,
+                       ExtentsCounters* counters)
+    : sp_(sp), pu_(sp.period_u()), pv_(sp.period_v()), same_point_(same_point), counters_(counters) {
     face_sign_ = face.reversed ? -1.0 : 1.0;
     std::unordered_map<int, int> forward, backward;
     for (const auto& loop : face.loops) {
@@ -1303,6 +1499,7 @@ FaceRegion::FaceRegion(const AcisBody& body, const AcisFace& face, const Surface
     }
     size_ = size;
     eps_ = 1e-14 * size;
+    refine_tree_.assign(segments_.size(), {});
     usable_ = pick_reference();
 }
 
@@ -1360,6 +1557,11 @@ void FaceRegion::add_coedge(const AcisBody& body, const AcisCoedge& ce) {
         std::vector<bool> settled;          // per segment (each leaf): its middle within tol
         refined.push_back(samples[0]);
         std::function<void(const Sample&, const Sample&, int)> refine = [&](const Sample& a, const Sample& b, int depth) {
+            // A piece of the edge that is one point in 3D is not split, whatever its (u, v) do
+            if (norm(sub(a.p, b.p)) <= same_point_ && edge_span_is_small(e, c, a.t, b.t, same_point_)) {
+                settled.push_back(true);
+                return;
+            }
             if (depth < 16 && !a.singular && !b.singular) {
                 Sample m;
                 last = a.uv;
@@ -1447,6 +1649,7 @@ UvPoint FaceRegion::map_at(const SegmentSource& s, double t, const UvPoint& near
 
 double FaceRegion::deviation(const SegmentSource& s, double ta, double tb, const UvPoint& a, const UvPoint& b,
                              UvPoint* middle) const {
+    if (counters_) ++counters_->deviations;
     double tm = 0.5 * (ta + tb);
     UvPoint m = map_at(s, tm, a);
     UvPoint q1 = map_at(s, 0.5 * (ta + tm), a);
@@ -1455,18 +1658,45 @@ double FaceRegion::deviation(const SegmentSource& s, double ta, double tb, const
     return std::max({segment_distance(q1, a, b), segment_distance(m, a, b), segment_distance(q3, a, b)});
 }
 
+bool FaceRegion::piece_is_point(size_t segment, size_t node, const SegmentSource& s, double ta, double tb) const {
+    int state = refine_tree_[segment][node].point;
+    if (state < 0) {
+        const bool point = norm(sub(edge_point(*s.edge, *s.curve, ta), edge_point(*s.edge, *s.curve, tb))) <= same_point_ &&
+                           edge_span_is_small(*s.edge, *s.curve, ta, tb, same_point_);
+        state = point ? 1 : 0;
+        refine_tree_[segment][node].point = state;
+    }
+    return state == 1;
+}
+
 // A piece is the edge to the last bits (last) when the edge is that near its chord, or when
 // halving it no longer brings the edge nearer (the mapping's own last bits); then its slack
-// is how near. Pieces near the target are halved, the others kept.
-void FaceRegion::refine(const SegmentSource& s, double ta, double tb, const UvPoint& a, const UvPoint& b,
-                        const UvNear& near, std::vector<UvPiece>& out, int depth, double above) const {
+// is how near. Pieces near the target are halved, the others kept. A piece that is one point
+// in 3D is kept as it is and is not the edge to the last bits: its (u, v) chord may jump (at
+// a pole), so it proves nothing. What a piece found is kept in the segment's tree, for the
+// next query that reaches it.
+void FaceRegion::refine(size_t segment, size_t node, const SegmentSource& s, double ta, double tb, const UvPoint& a,
+                        const UvPoint& b, const UvNear& near, std::vector<UvPiece>& out, int depth,
+                        double above) const {
+    if (piece_is_point(segment, node, s, ta, tb)) {
+        out.push_back({{a, b}, eps_, false});
+        return;
+    }
     double tm = 0.5 * (ta + tb);
     if (!(tm > std::min(ta, tb) && tm < std::max(ta, tb))) {
         out.push_back({{a, b}, eps_, true});
         return;
     }
-    UvPoint m;
-    double dev = deviation(s, ta, tb, a, b, &m);
+    std::vector<RefineNode>& tree = refine_tree_[segment];
+    if (!tree[node].known) {
+        UvPoint made;
+        const double d = deviation(s, ta, tb, a, b, &made);
+        tree[node].known = true;
+        tree[node].dev = d;
+        tree[node].middle = made;
+    }
+    const UvPoint m = tree[node].middle;
+    const double dev = tree[node].dev;
     double slack = 2.0 * dev + eps_;
     bool settled = slack <= 4.0 * eps_ || (dev <= 1e-12 * size_ && dev > 0.5 * above) || depth >= 80;
     if (settled || out.size() >= 65536) {
@@ -1477,8 +1707,16 @@ void FaceRegion::refine(const SegmentSource& s, double ta, double tb, const UvPo
         out.push_back({{a, b}, slack, false});
         return;
     }
-    refine(s, ta, tm, a, m, near, out, depth + 1, dev);
-    refine(s, tm, tb, m, b, near, out, depth + 1, dev);
+    if (tree[node].left < 0) {
+        tree.push_back(RefineNode{});
+        tree[node].left = static_cast<int>(tree.size()) - 1;
+        tree.push_back(RefineNode{});
+        tree[node].right = static_cast<int>(tree.size()) - 1;
+    }
+    const size_t left = static_cast<size_t>(tree[node].left);
+    const size_t right = static_cast<size_t>(tree[node].right);
+    refine(segment, left, s, ta, tm, a, m, near, out, depth + 1, dev);
+    refine(segment, right, s, tm, tb, m, b, near, out, depth + 1, dev);
 }
 
 void FaceRegion::pieces(size_t i, double du, double dv, const UvNear& near, std::vector<UvPiece>& out) const {
@@ -1494,7 +1732,8 @@ void FaceRegion::pieces(size_t i, double du, double dv, const UvNear& near, std:
     UvNear moved = [&](const UvPoint& x, const UvPoint& y, double margin) {
         return near({x.u + du, x.v + dv}, {y.u + du, y.v + dv}, margin);
     };
-    refine(sources_[i], sources_[i].ta, sources_[i].tb, s.a, s.b, moved, out, 0,
+    if (refine_tree_[i].empty()) refine_tree_[i].push_back(RefineNode{});
+    refine(i, 0, sources_[i], sources_[i].ta, sources_[i].tb, s.a, s.b, moved, out, 0,
            std::numeric_limits<double>::infinity());
     for (auto& p : out) {
         p.chord.a.u += du;
@@ -1737,8 +1976,8 @@ bool FaceRegion::reaches(double v0, double side) const {
 
 class BodyExtents {
 public:
-    BodyExtents(const AcisBody& body, const Affine& world, Extents& out)
-        : body_(body), world_(world), out_(out) {
+    BodyExtents(const AcisBody& body, const Affine& world, Extents& out, ExtentsCounters* counters)
+        : body_(body), world_(world), out_(out), counters_(counters) {
         for (int i = 0; i < 3; ++i) directions_[i] = world.row(i);
         scale_ = 1.0;
         for (const auto& e : body.edges) {
@@ -1746,15 +1985,31 @@ public:
                 scale_ = std::max({scale_, std::fabs(p->x), std::fabs(p->y), std::fabs(p->z)});
             }
         }
+        same_point_ = same_point_of(body);
     }
 
-    void run() {
-        for (const auto& e : body_.edges) edge(e);
-        for (const auto& f : body_.faces) face(f);
+    void run(AcisExtentsPass pass) {
+        if (pass != AcisExtentsPass::Faces) {
+            for (const auto& e : body_.edges) edge(e);
+        }
+        if (pass != AcisExtentsPass::Edges) {
+            for (const auto& f : body_.faces) face(f);
+        }
     }
 
 private:
     void add_local(const Point3& p) { out_.add(world_.apply(p)); }
+    // Whether a point of the body (in its own coordinates) is in the box known so far
+    bool in_box(const Point3& local) const {
+        if (out_.empty()) return false;
+        const Point3 p = world_.apply(local);
+        return p.x >= out_.min.x && p.x <= out_.max.x && p.y >= out_.min.y && p.y <= out_.max.y &&
+               p.z >= out_.min.z && p.z <= out_.max.z;
+    }
+    // Whether all of the surface lies in the box known so far
+    bool box_holds(const AcisSurface& s) const;
+    // Whether the cube of half side r around the point lies in the box known so far
+    bool cube_in_box(const Point3& center, double r) const;
     void edge(const AcisEdge& e);
     void intersection_edge(const AcisCurve& c, const std::vector<EdgePiece>& pieces);
     void face(const AcisFace& f);
@@ -1766,8 +2021,10 @@ private:
     const AcisBody& body_;
     const Affine& world_;
     Extents& out_;
+    ExtentsCounters* counters_ = nullptr;
     Point3 directions_[3];
     double scale_ = 1.0;
+    double same_point_ = 0.0;           // two points of an edge this near are one point
 };
 
 // An edge's points: line ends; an ellipse's ends and extremes; a spline's exactly; an
@@ -1858,6 +2115,46 @@ void BodyExtents::intersection_edge(const AcisCurve& c, const std::vector<EdgePi
     }
 }
 
+bool BodyExtents::cube_in_box(const Point3& center, double r) const {
+    if (!std::isfinite(r) || !std::isfinite(center.x) || !std::isfinite(center.y) || !std::isfinite(center.z)) return false;
+    for (int i = 0; i < 8; ++i) {
+        const Point3 corner = {center.x + ((i & 1) ? r : -r), center.y + ((i & 2) ? r : -r),
+                               center.z + ((i & 4) ? r : -r)};
+        if (!in_box(corner)) return false;
+    }
+    return true;
+}
+
+// Whether the surface, all of it, lies in the box known so far (then no face on it can extend
+// the box). A spline surface lies in the hull of its control points when all its weights are
+// positive, a sphere in the cube of its radius, a torus in the cube of its two radii added.
+// An empty box, an incomplete net or a value that is not finite gives no answer: false.
+bool BodyExtents::box_holds(const AcisSurface& s) const {
+    if (out_.empty()) return false;
+    switch (s.type) {
+        case AcisSurfaceType::Spline: {
+            const AcisSplineSurface& net = s.spline;
+            if (net.count_u <= 0 || net.count_v <= 0) return false;
+            const size_t count = static_cast<size_t>(net.count_u) * static_cast<size_t>(net.count_v);
+            if (net.points.size() != count) return false;
+            if (!net.weights.empty() && net.weights.size() != count) return false;
+            for (double w : net.weights) {
+                if (!(w > 0.0) || !std::isfinite(w)) return false;
+            }
+            for (const auto& p : net.points) {
+                if (!in_box(p)) return false;
+            }
+            return true;
+        }
+        case AcisSurfaceType::Sphere:
+            return cube_in_box(s.origin, std::fabs(s.radius));
+        case AcisSurfaceType::Torus:
+            return cube_in_box(s.origin, std::fabs(s.radius) + std::fabs(s.minor));
+        default:
+            return false;
+    }
+}
+
 // The interior extremes of a face
 void BodyExtents::face(const AcisFace& f) {
     if (f.surface < 0) return;
@@ -1867,13 +2164,18 @@ void BodyExtents::face(const AcisFace& f) {
         s.type != AcisSurfaceType::Revolution && s.type != AcisSurfaceType::Sum) return;
     // Straight in one direction: its edges bound it (a sum without loops: its ends)
     if (s.ruled && !(s.type == AcisSurfaceType::Sum && f.loops.empty())) return;
+    if (box_holds(s)) {
+        if (counters_) ++counters_->faces_in_box;
+        return;
+    }
+    if (counters_) ++counters_->faces_measured;
     SurfaceParam sp(s, directions_);
     if (!sp.valid()) return;
     if (s.type == AcisSurfaceType::Cone) {
         double va = 0.0;
         if (!sp.apex(va) || f.loops.empty()) return;          // a cylinder, or unbounded
     }
-    FaceRegion region(body_, f, sp);
+    FaceRegion region(body_, f, sp, same_point_, counters_);
     if (!region.usable()) return;
 
     auto candidate = [&](const Point3& p) {
@@ -1957,8 +2259,6 @@ void BodyExtents::face(const AcisFace& f) {
 // A spline face: branch and bound on the surface's Bézier patches
 // ---------------------------------------------------------------------------
 
-using Homogeneous = std::array<double, 4>;     // w x, w y, w z, w
-
 // A rational Bézier patch: (du + 1) × (dv + 1) homogeneous points, net[j * (du + 1) + i]
 struct BezierPatch {
     int du = 0;
@@ -1967,30 +2267,6 @@ struct BezierPatch {
     std::vector<Homogeneous> net;
     double bound = 0.0;
 };
-
-// The Bézier points of the span [a, b] (in span k) of a B-spline with homogeneous points
-// ctrl: the blossom at (a … a, b … b)
-std::vector<Homogeneous> bezier_span(const std::vector<Homogeneous>& ctrl, const std::vector<double>& knots,
-                                     int p, size_t k, double a, double b) {
-    std::vector<Homogeneous> out(static_cast<size_t>(p) + 1);
-    for (int j = 0; j <= p; ++j) {
-        std::vector<Homogeneous> d(static_cast<size_t>(p) + 1);
-        for (int i = 0; i <= p; ++i) d[static_cast<size_t>(i)] = ctrl[k - p + i];
-        for (int r = 1; r <= p; ++r) {
-            double t = r <= p - j ? a : b;
-            for (int i = p; i >= r; --i) {
-                size_t g = k - p + i;
-                double den = knots[g + p - r + 1] - knots[g];
-                double alpha = den == 0.0 ? 0.0 : (t - knots[g]) / den;
-                for (int c = 0; c < 4; ++c) {
-                    d[static_cast<size_t>(i)][c] = (1.0 - alpha) * d[static_cast<size_t>(i) - 1][c] + alpha * d[static_cast<size_t>(i)][c];
-                }
-            }
-        }
-        out[static_cast<size_t>(j)] = d[static_cast<size_t>(p)];
-    }
-    return out;
-}
 
 std::vector<BezierPatch> bezier_patches(const AcisSplineSurface& s) {
     std::vector<BezierPatch> out;
@@ -2191,8 +2467,13 @@ void BodyExtents::spline_face(const AcisSurface& s, const SurfaceParam& sp, cons
     knot_lines(sp_s, sp, region);
     double extent = 1.0;
     for (const auto& p : sp_s.points) extent = std::max({extent, std::fabs(p.x), std::fabs(p.y), std::fabs(p.z)});
-    for (const auto& w0 : directions_) {
+    for (int axis = 0; axis < 3; ++axis) {
+        const Point3& w0 = directions_[axis];
         if (!(norm(w0) > 0.0)) continue;
+        // The box known so far in this world coordinate: w0 · p + offset
+        const double offset = world_.m[axis][3];
+        const double known_lo = axis == 0 ? out_.min.x : (axis == 1 ? out_.min.y : out_.min.z);
+        const double known_hi = axis == 0 ? out_.max.x : (axis == 1 ? out_.max.y : out_.max.z);
         for (double sense : {1.0, -1.0}) {
             Point3 w = mul(w0, sense);
             auto bound_of = [&](BezierPatch& p) {
@@ -2205,6 +2486,11 @@ void BodyExtents::spline_face(const AcisSurface& s, const SurfaceParam& sp, cons
             double best = -std::numeric_limits<double>::infinity();
             if (region.everywhere()) best = dot(w, sp.point(sp.u_min(), sp.v_min()));
             for (const auto& q : region.boundary_points()) best = std::max(best, dot(w, q));
+            // Nothing in the face that stays within the known box can extend it
+            if (!out_.empty()) {
+                const double known = sense > 0.0 ? known_hi - offset : -(known_lo - offset);
+                if (std::isfinite(known)) best = std::max(best, known);
+            }
             bool have_point = false;
             Point3 best_point;
             double tol = 1e-12 * extent * norm(w0);
@@ -2312,7 +2598,9 @@ void BodyExtents::knot_lines(const AcisSplineSurface& s, const SurfaceParam& sp,
                 if (!whole && !periodic_other && (t <= other_lo || t >= other_hi)) continue;
                 double u = dir == 0 ? k : t;
                 double v = dir == 0 ? t : k;
-                if (region.inside(u, v)) add_local(sp.point(u, v));
+                const Point3 candidate = sp.point(u, v);
+                if (in_box(candidate)) continue;
+                if (region.inside(u, v)) add_local(candidate);
             }
         }
     }
@@ -2321,73 +2609,6 @@ void BodyExtents::knot_lines(const AcisSplineSurface& s, const SurfaceParam& sp,
 // ---------------------------------------------------------------------------
 // Surfaces defined by curves: a revolution and a sum
 // ---------------------------------------------------------------------------
-
-// A piece of a curve as a rational Bézier curve: its homogeneous points, and the curve's
-// parameters at its ends (an ellipse's arc is not parameterized by its angle)
-struct CurveSpan {
-    std::vector<Homogeneous> net;
-    double t0 = 0.0;
-    double t1 = 0.0;
-};
-
-// The curve from parameter lo to hi as rational Bézier spans, exactly: a spline's knot
-// spans (the blossom), an ellipse's arcs of at most a quarter turn (c + (M cos m + N sin m)/
-// cos h between the ends, weight cos h, for the arc m ± h), a straight's segment
-std::vector<CurveSpan> curve_spans(const AcisCurve& c, double lo, double hi) {
-    std::vector<CurveSpan> out;
-    switch (c.type) {
-        case AcisCurveType::Straight: {
-            Point3 a, b;
-            acis_curve_point(c, lo, a);
-            acis_curve_point(c, hi, b);
-            out.push_back({{{a.x, a.y, a.z, 1.0}, {b.x, b.y, b.z, 1.0}}, lo, hi});
-            break;
-        }
-        case AcisCurveType::Ellipse: {
-            int pieces = std::max(1, static_cast<int>(std::ceil((hi - lo) / (kPi / 2.0) - 1e-12)));
-            Point3 minor = mul(cross(c.axis, c.major), c.ratio);
-            for (int i = 0; i < pieces; ++i) {
-                double a = lo + (hi - lo) * i / pieces;
-                double b = lo + (hi - lo) * (i + 1) / pieces;
-                double h = 0.5 * (b - a), m = 0.5 * (a + b);
-                Point3 pa, pb;
-                acis_curve_point(c, a, pa);
-                acis_curve_point(c, b, pb);
-                double w = std::cos(h);
-                Point3 mid = add(c.origin, mul(add(mul(c.major, std::cos(m)), mul(minor, std::sin(m))), 1.0 / w));
-                out.push_back({{{pa.x, pa.y, pa.z, 1.0}, {mid.x * w, mid.y * w, mid.z * w, w}, {pb.x, pb.y, pb.z, 1.0}},
-                               a, b});
-            }
-            break;
-        }
-        case AcisCurveType::Spline: {
-            const AcisSplineCurve& s = c.spline;
-            double a = c.reversed ? -hi : lo;
-            double b = c.reversed ? -lo : hi;
-            a = std::max(a, curve_lo(s));
-            b = std::min(b, curve_hi(s));
-            std::vector<Homogeneous> h(s.points.size());
-            for (size_t i = 0; i < h.size(); ++i) {
-                double w = i < s.weights.size() ? s.weights[i] : 1.0;
-                h[i] = {s.points[i].x * w, s.points[i].y * w, s.points[i].z * w, w};
-            }
-            for (size_t k = static_cast<size_t>(s.degree); k < s.points.size(); ++k) {
-                double ka = std::max(s.knots[k], a);
-                double kb = std::min(s.knots[k + 1], b);
-                if (kb <= ka) continue;
-                CurveSpan span;
-                span.net = bezier_span(h, s.knots, s.degree, k, ka, kb);
-                span.t0 = c.reversed ? -ka : ka;
-                span.t1 = c.reversed ? -kb : kb;
-                out.push_back(std::move(span));
-            }
-            break;
-        }
-        default:
-            break;
-    }
-    return out;
-}
 
 // A Bézier span's point at τ in [0, 1] (de Casteljau on the homogeneous points)
 Point3 span_point(const CurveSpan& s, double tau) {
@@ -2697,10 +2918,11 @@ std::vector<std::vector<Point3>> acis_edge_polylines(const std::vector<AcisBody>
     return out;
 }
 
-void acis_extents(const std::vector<AcisBody>& bodies, const AcisMap& map, Extents& out) {
+void acis_extents(const std::vector<AcisBody>& bodies, const AcisMap& map, Extents& out, AcisExtentsPass pass,
+                  ExtentsCounters* counters) {
     for (const auto& body : bodies) {
         Affine world = compose(map.m, body.transform);
-        BodyExtents(body, world, out).run();
+        BodyExtents(body, world, out, counters).run(pass);
     }
 }
 

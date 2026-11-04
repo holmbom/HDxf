@@ -4,9 +4,9 @@ Skapad av `python -I tools/fas9_facit_register.py` (steg 9.0) ur inventeringen `
 
 ## Korpus
 
-- 3925 filer funna (build/test-data, doc/facit med doc/facit/web, doc/acad_*_dxf.dxf), 4 med samma innehåll som en annan (SHA-256: räknas en gång), 3921 olika innehåll lästa, 1913 av dem binära tvillingar av en ASCII-fil som är räknad, 2008 räknade, 0 ej läsbara.
-- Producent (räknade filer): autocad 38, autocad-facit 1917, other 44, unknown 8, web-unproven 1. `autocad-facit` = sparade av AutoCAD 2025:s kärna ur doc/facit/*.scr; `autocad` = filer med känd AutoCAD-proveniens (test/data/README.md); `web-unproven` = doc/facit/web, AutoCAD-ursprung sannolikt men inte bevisat (doc/facit/web/SOURCES.md); `other` = andra program (ezdxf, tredjeparts R13/R14) — observationsunderlag, inte facit.
-- Fingeravtryck (SHA-256 över de olika innehållens SHA-256, sorterade): `978f86710414b47b7f4b7c39141e8be878e7cd5f6955521b85133ae7a6a48d14`
+- 4123 filer funna (build/test-data, doc/facit med doc/facit/web, doc/acad_*_dxf.dxf), 4 med samma innehåll som en annan (SHA-256: räknas en gång), 4119 olika innehåll lästa, 2011 av dem binära tvillingar av en ASCII-fil som är räknad, 2108 räknade, 0 ej läsbara.
+- Producent (räknade filer): autocad 38, autocad-facit 2017, other 44, unknown 8, web-unproven 1. `autocad-facit` = sparade av AutoCAD 2025:s kärna ur doc/facit/*.scr; `autocad` = filer med känd AutoCAD-proveniens (test/data/README.md); `web-unproven` = doc/facit/web, AutoCAD-ursprung sannolikt men inte bevisat (doc/facit/web/SOURCES.md); `other` = andra program (ezdxf, tredjeparts R13/R14) — observationsunderlag, inte facit.
+- Fingeravtryck (SHA-256 över de olika innehållens SHA-256, sorterade): `1c1dcc56533aa27c5169a6fc0fd4f439a02746f4f1bdd23163fbd5fa8b9b8f7b`
 
 **Sökutfall.** Den gamla planens inventering använde en annan, större korpus (scratch-kataloger som inte längre finns); dess siffror står i `test/data/typed_types.tsv` och `typed_forms.tsv` som observationsunderlag. Här räknas bara det som finns nu. Sedan den inventeringen har AutoCAD 2025:s kärna sparat doc/facit/16_dynamic_blocks, 17_associative och flera till: många typer som den gamla planen hade som "noll poster" har nu AutoCAD-poster (se kolumnen). Det som saknas efter denna sökning är **ej testat** per typ, gren, version och format tills familjens `fas9_*.scr` har framställt ett original eller en webbsökning (fast URL + SHA-256 i test/data/manifest.cmake) har funnit ett.
 
@@ -69,8 +69,8 @@ Steg 9.4 (2026-10-28) har gjort `doc/facit/fas9_order_index.scr` (98 filer `acad
 | Typ | Register | AutoCAD-poster (filer) | AutoCAD-versioner | Första AutoCAD-prov | Övriga filer |
 |---|---|---:|---|---|---|
 | `ACAD_TABLE` | ej typad | 153 (122) | 2000:24, 2004:24, 2007:25, 2010:25, 2013:30, 2018:25 | `acadsharp/sample_AC1015_ascii.dxf` handle `528` (2000) `4f7d7f0d3957` | 0 |
-| `TABLESTYLE` | ej typad | 1784 (1678) | 2000:292, 2004:293, 2007:296, 2010:297, 2013:308, 2018:298 | `acadsharp/geoloc.dxf` handle `87` (2018) `30d1985e3838` | 11 |
-| `CELLSTYLEMAP` | ej typad | 1784 (1678) | 2000:292, 2004:293, 2007:296, 2010:297, 2013:308, 2018:298 | `acadsharp/geoloc.dxf` handle `247` (2018) `30d1985e3838` | 9 |
+| `TABLESTYLE` | ej typad | 1868 (1762) | 2000:306, 2004:307, 2007:310, 2010:311, 2013:322, 2018:312 | `acadsharp/geoloc.dxf` handle `87` (2018) `30d1985e3838` | 11 |
+| `CELLSTYLEMAP` | ej typad | 1868 (1762) | 2000:306, 2004:307, 2007:310, 2010:311, 2013:322, 2018:312 | `acadsharp/geoloc.dxf` handle `247` (2018) `30d1985e3838` | 9 |
 | `TABLECONTENT` | ej typad | 123 (104) | 2000:19, 2004:19, 2007:20, 2010:20, 2013:25, 2018:20 | `acadsharp/sample_AC1015_ascii.dxf` handle `747` (2000) `4f7d7f0d3957` | 0 |
 | `TABLEGEOMETRY` | ej typad | 123 (104) | 2000:19, 2004:19, 2007:20, 2010:20, 2013:25, 2018:20 | `acadsharp/sample_AC1015_ascii.dxf` handle `748` (2000) `4f7d7f0d3957` | 0 |
 
@@ -86,7 +86,7 @@ Vad facit visade (reglerna i koden): textinnehållets ruta är MTEXT:ens bredd +
 
 | Typ | Register | AutoCAD-poster (filer) | AutoCAD-versioner | Första AutoCAD-prov | Övriga filer |
 |---|---|---:|---|---|---|
-| `MATERIAL` | ej typad | 5567 (1678) | 2000:913, 2004:917, 2007:926, 2010:929, 2013:950, 2018:932 | `acadsharp/geoloc.dxf` handle `97` (2018) `30d1985e3838` | 43 |
+| `MATERIAL` | ej typad | 5819 (1762) | 2000:955, 2004:959, 2007:968, 2010:971, 2013:992, 2018:974 | `acadsharp/geoloc.dxf` handle `97` (2018) `30d1985e3838` | 43 |
 
 AutoCAD-poster finns för alla typer i posten. Posternas grenar (listor, valfria fält, relationer, äldre former) läses ur filerna av familjesteget; det som inte syns i dem är ej testat.
 
@@ -109,7 +109,7 @@ refraction-källa (samma kod).
 
 | Typ | Register | AutoCAD-poster (filer) | AutoCAD-versioner | Första AutoCAD-prov | Övriga filer |
 |---|---|---:|---|---|---|
-| `VISUALSTYLE` | ej typad | 41350 (1678) | 2000:6775, 2004:6799, 2007:6873, 2010:6899, 2013:7077, 2018:6927 | `acadsharp/geoloc.dxf` handle `9F` (2018) `30d1985e3838` | 211 |
+| `VISUALSTYLE` | ej typad | 43366 (1762) | 2000:7111, 2004:7135, 2007:7209, 2010:7235, 2013:7413, 2018:7263 | `acadsharp/geoloc.dxf` handle `9F` (2018) `30d1985e3838` | 211 |
 
 AutoCAD-poster finns för alla typer i posten. Posternas grenar (listor, valfria fält, relationer, äldre former) läses ur filerna av familjesteget; det som inte syns i dem är ej testat.
 
@@ -185,7 +185,7 @@ Steg 9.8 (2026-10-28) har gjort `doc/facit/fas9_document_data.scr` (42 filer `ac
 | `BLOCKVISIBILITYPARAMETER` | ej typad | 592 (213) | 2000:97, 2004:97, 2007:97, 2010:97, 2013:97, 2018:107 | `acadsharp/sample_AC1015_ascii.dxf` handle `A89` (2000) `4f7d7f0d3957` | 0 |
 | `BLOCKXYGRIP` | noll poster (gamla planen) | 444 (103) | 2000:73, 2004:73, 2007:73, 2010:73, 2013:73, 2018:79 | `doc/facit/acad_2000_dxf_dynamic_blocks.dxf` handle `28B` (2000) `da42f4897349` | 1 |
 | `BLOCKXYPARAMETER` | noll poster (gamla planen) | 49 (49) | 2000:8, 2004:8, 2007:8, 2010:8, 2013:8, 2018:9 | `doc/facit/acad_2018_dxf_sample_dynblocks_civil.dxf` handle `5EDE8` (2018) `19c6348767cf` | 0 |
-| `ACAD_EVALUATION_GRAPH` | ej typad | 2905 (515) | 2000:179, 2004:179, 2007:625, 2010:637, 2013:633, 2018:652 | `acadsharp/sample_AC1015_ascii.dxf` handle `A80` (2000) `4f7d7f0d3957` | 1 |
+| `ACAD_EVALUATION_GRAPH` | ej typad | 2921 (519) | 2000:179, 2004:179, 2007:629, 2010:641, 2013:637, 2018:656 | `acadsharp/sample_AC1015_ascii.dxf` handle `A80` (2000) `4f7d7f0d3957` | 1 |
 | `ACDB_BLOCKREPRESENTATION_DATA` | ej typad | 1002 (124) | 2000:161, 2004:161, 2007:161, 2010:161, 2013:161, 2018:197 | `acadsharp/sample_AC1015_ascii.dxf` handle `ABD` (2000) `4f7d7f0d3957` | 4 |
 | `ACDB_DYNAMICBLOCKPURGEPREVENTER_VERSION` | ej typad | 1098 (250) | 2000:179, 2004:179, 2007:179, 2010:179, 2013:179, 2018:203 | `acadsharp/sample_AC1015_ascii.dxf` handle `A8D` (2000) `4f7d7f0d3957` | 1 |
 
@@ -207,13 +207,13 @@ Steg 9.13 (2026-10-28) har gjort `doc/facit/fas9_dynamic_types.scr` och typat de
 | `ACSH_CYLINDER_CLASS` | ej typad | 261 (169) | 2007:65, 2010:65, 2013:66, 2018:65 | `jscad/3Ddraw.dxf` handle `111` (2013) `26b36ce678dc` | 0 |
 | `ACSH_EXTRUSION_CLASS` | ej typad | 153 (125) | 2007:38, 2010:38, 2013:39, 2018:38 | `acadsharp/sample_AC1021_ascii.dxf` handle `D6D` (2007) `39ebdd9a48fe` | 0 |
 | `ACSH_FILLET_CLASS` | noll poster (gamla planen) | 132 (104) | 2007:33, 2010:33, 2013:33, 2018:33 | `doc/facit/acad_2007_dxf_assoc_extended.dxf` handle `43A` (2007) `69a25575d543` | 0 |
-| `ACSH_HISTORY_CLASS` | ej typad | 1807 (305) | 2007:446, 2010:458, 2013:454, 2018:449 | `acadsharp/sample_AC1021_ascii.dxf` handle `D66` (2007) `39ebdd9a48fe` | 0 |
-| `ACSH_LOFT_CLASS` | noll poster (gamla planen) | 92 (36) | 2007:23, 2010:23, 2013:23, 2018:23 | `doc/facit/acad_2007_dxf_history_boolean.dxf` handle `1521` (2007) `336cbcfc4cbd` | 0 |
+| `ACSH_HISTORY_CLASS` | ej typad | 1823 (309) | 2007:450, 2010:462, 2013:458, 2018:453 | `acadsharp/sample_AC1021_ascii.dxf` handle `D66` (2007) `39ebdd9a48fe` | 0 |
+| `ACSH_LOFT_CLASS` | noll poster (gamla planen) | 96 (40) | 2007:24, 2010:24, 2013:24, 2018:24 | `doc/facit/acad_2007_dxf_acis_hulls.dxf` handle `27C` (2007) `5db8dbcf373a` | 0 |
 | `ACSH_PYRAMID_CLASS` | ej typad | 133 (89) | 2007:33, 2010:33, 2013:34, 2018:33 | `jscad/3Ddraw.dxf` handle `119` (2013) `26b36ce678dc` | 0 |
 | `ACSH_REVOLVE_CLASS` | noll poster (gamla planen) | 40 (40) | 2007:10, 2010:10, 2013:10, 2018:10 | `doc/facit/acad_2007_dxf_history_boolean.dxf` handle `1526` (2007) `336cbcfc4cbd` | 0 |
-| `ACSH_SPHERE_CLASS` | ej typad | 161 (105) | 2007:40, 2010:40, 2013:41, 2018:40 | `jscad/3Ddraw.dxf` handle `10D` (2013) `26b36ce678dc` | 0 |
+| `ACSH_SPHERE_CLASS` | ej typad | 165 (109) | 2007:41, 2010:41, 2013:42, 2018:41 | `jscad/3Ddraw.dxf` handle `10D` (2013) `26b36ce678dc` | 0 |
 | `ACSH_SWEEP_CLASS` | ej typad | 68 (40) | 2007:17, 2010:17, 2013:17, 2018:17 | `libre/example_2007.dxf` handle `2E2` (2007) `c51b813e30c5` | 0 |
-| `ACSH_TORUS_CLASS` | ej typad | 101 (94) | 2007:23, 2010:31, 2013:24, 2018:23 | `aspose/conic_pyramid.dxf` handle `385` (2010) `2b9c26e8452d` | 0 |
+| `ACSH_TORUS_CLASS` | ej typad | 105 (98) | 2007:24, 2010:32, 2013:25, 2018:24 | `aspose/conic_pyramid.dxf` handle `385` (2010) `2b9c26e8452d` | 0 |
 | `ACSH_WEDGE_CLASS` | ej typad | 97 (97) | 2007:24, 2010:24, 2013:25, 2018:24 | `jscad/3Ddraw.dxf` handle `102` (2013) `26b36ce678dc` | 0 |
 
 AutoCAD-poster finns för alla typer i posten. Posternas grenar (listor, valfria fält, relationer, äldre former) läses ur filerna av familjesteget; det som inte syns i dem är ej testat.
@@ -236,8 +236,8 @@ Det AutoCAD visade, och som koden följer:
 
 | Typ | Register | AutoCAD-poster (filer) | AutoCAD-versioner | Första AutoCAD-prov | Övriga filer |
 |---|---|---:|---|---|---|
-| `ACDBASSOCPERSSUBENTMANAGER` | ej typad | 687 (687) | 2000:113, 2004:114, 2007:114, 2010:115, 2013:116, 2018:115 | `acadsharp/sample_AC1015_ascii.dxf` handle `D62` (2000) `4f7d7f0d3957` | 0 |
-| `ACDBPERSSUBENTMANAGER` | ej typad | 458 (458) | 2000:75, 2004:75, 2007:76, 2010:77, 2013:78, 2018:77 | `acadsharp/sample_AC1015_ascii.dxf` handle `D63` (2000) `4f7d7f0d3957` | 0 |
+| `ACDBASSOCPERSSUBENTMANAGER` | ej typad | 693 (693) | 2000:114, 2004:115, 2007:115, 2010:116, 2013:117, 2018:116 | `acadsharp/sample_AC1015_ascii.dxf` handle `D62` (2000) `4f7d7f0d3957` | 0 |
+| `ACDBPERSSUBENTMANAGER` | ej typad | 464 (464) | 2000:76, 2004:76, 2007:77, 2010:78, 2013:79, 2018:78 | `acadsharp/sample_AC1015_ascii.dxf` handle `D63` (2000) `4f7d7f0d3957` | 0 |
 
 AutoCAD-poster finns för alla typer i posten. Posternas grenar (listor, valfria fält, relationer, äldre former) läses ur filerna av familjesteget; det som inte syns i dem är ej testat.
 
@@ -425,7 +425,7 @@ Vad AutoCAD visade (2000 och 2004 har samma proxygrafik; 2007 och senare åtta b
 | `ACDB_RADIMLRGOBJECTCONTEXTDATA_CLASS` | ej typad | 135 (51) | 2010:45, 2013:45, 2018:45 | `doc/facit/acad_2010_dxf_annotative.dxf` handle `3D8` (2010) `ce989df2e303` | 0 |
 | `ACDB_RADIMOBJECTCONTEXTDATA_CLASS` | noll poster (gamla planen) | 135 (51) | 2010:45, 2013:45, 2018:45 | `doc/facit/acad_2010_dxf_annotative.dxf` handle `403` (2010) `ce989df2e303` | 0 |
 | `ACDB_TEXTOBJECTCONTEXTDATA_CLASS` | ej typad | 225 (54) | 2010:75, 2013:75, 2018:75 | `acadsharp/sample_AC1024_ascii.dxf` handle `3C6` (2010) `c97e857047ad` | 0 |
-| `SCALE` | typad | 54656 (1678) | 2000:9009, 2004:9026, 2007:9109, 2010:9126, 2013:9198, 2018:9188 | `acadsharp/geoloc.dxf` handle `B7` (2018) `30d1985e3838` | 252 |
+| `SCALE` | typad | 57140 (1762) | 2000:9423, 2004:9440, 2007:9523, 2010:9540, 2013:9612, 2018:9602 | `acadsharp/geoloc.dxf` handle `B7` (2018) `30d1985e3838` | 252 |
 
 AutoCAD-poster finns för 16 av 18 typer; resten är **ej testat** tills ett original framställs.
 
@@ -511,8 +511,8 @@ AutoCAD-fil (ingen fil har ett DIMENSION i ett namngivet block utom dynamiska bl
 | Typ | Register | AutoCAD-poster (filer) | AutoCAD-versioner | Första AutoCAD-prov | Övriga filer |
 |---|---|---:|---|---|---|
 | `LWPOLYLINE` | typad | 13266 (644) | 2000:2140, 2004:2144, 2007:2157, 2010:2159, 2013:2172, 2018:2494 | `acadsharp/sample_AC1015_ascii.dxf` handle `4A6` (2000) `4f7d7f0d3957` | 627 |
-| `POLYLINE` | typad | 7088 (298) | R12:6744, R13:27, R14:60, 2000:41, 2004:41, 2007:43, 2010:43, 2013:43, 2018:46 | `acadsharp/sample_AC1009_ascii.dxf` handle `4A6` (R12) `d0039feca2ed` | 480 |
-| `VERTEX` | struktur | 211572 (298) | R12:209509, R13:89, R14:1080, 2000:139, 2004:139, 2007:152, 2010:152, 2013:152, 2018:160 | `acadsharp/sample_AC1009_ascii.dxf` handle `1C57` (R12) `d0039feca2ed` | 2200 |
+| `POLYLINE` | typad | 7244 (342) | R12:6774, R13:27, R14:60, 2000:62, 2004:62, 2007:64, 2010:64, 2013:64, 2018:67 | `acadsharp/sample_AC1009_ascii.dxf` handle `4A6` (R12) `d0039feca2ed` | 480 |
+| `VERTEX` | struktur | 534630 (342) | R12:292141, R13:89, R14:1080, 2000:40210, 2004:40210, 2007:40223, 2010:40223, 2013:40223, 2018:40231 | `acadsharp/sample_AC1009_ascii.dxf` handle `1C57` (R12) `d0039feca2ed` | 2200 |
 
 AutoCAD-poster finns för alla typer i posten. Posternas grenar (listor, valfria fält, relationer, äldre former) läses ur filerna av familjesteget; det som inte syns i dem är ej testat.
 
@@ -624,8 +624,8 @@ Vad AutoCAD visade (pluginen är inte laddade i kärnan):
 
 | Typ | Register | AutoCAD-poster (filer) | AutoCAD-versioner | Första AutoCAD-prov | Övriga filer |
 |---|---|---:|---|---|---|
-| `ACDBDETAILVIEWSTYLE` | typad | 1746 (1676) | 2000:286, 2004:287, 2007:290, 2010:291, 2013:300, 2018:292 | `acadsharp/geoloc.dxf` handle `1AC` (2018) `30d1985e3838` | 4 |
-| `ACDBSECTIONVIEWSTYLE` | typad | 1746 (1676) | 2000:286, 2004:287, 2007:290, 2010:291, 2013:300, 2018:292 | `acadsharp/geoloc.dxf` handle `1AA` (2018) `30d1985e3838` | 4 |
+| `ACDBDETAILVIEWSTYLE` | typad | 1830 (1760) | 2000:300, 2004:301, 2007:304, 2010:305, 2013:314, 2018:306 | `acadsharp/geoloc.dxf` handle `1AC` (2018) `30d1985e3838` | 4 |
+| `ACDBSECTIONVIEWSTYLE` | typad | 1830 (1760) | 2000:300, 2004:301, 2007:304, 2010:305, 2013:314, 2018:306 | `acadsharp/geoloc.dxf` handle `1AA` (2018) `30d1985e3838` | 4 |
 
 AutoCAD-poster finns för alla typer i posten. Posternas grenar (listor, valfria fält, relationer, äldre former) läses ur filerna av familjesteget; det som inte syns i dem är ej testat.
 

@@ -7,6 +7,7 @@
 #include "viewport_mview.hpp"
 #include "TypedRecordTypes.hpp"
 #include "proxy_record.hpp"
+#include "number_parse.hpp"
 #include <algorithm>
 #include <cstdlib>
 #include <cstdint>
@@ -15,6 +16,20 @@
 
 namespace hdxf {
 namespace internal {
+
+namespace {
+
+// A vector holding exactly its elements: the spare capacity a parser's growth leaves is not carried into the drawing
+template <typename T>
+void fit_capacity(std::vector<T>& v) {
+    if (v.capacity() == v.size()) return;
+    std::vector<T> exact;
+    exact.reserve(v.size());
+    exact.insert(exact.end(), std::make_move_iterator(v.begin()), std::make_move_iterator(v.end()));
+    v = std::move(exact);
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // Constructor
@@ -196,8 +211,10 @@ void DxfReader::capture(const GroupCode& gc) {
         if (!finished_record_.empty() && !is_marker(finished_record_)) {
             strays_.push_back(std::move(finished_record_));
         }
-        finished_record_ = std::move(open_record_);
-        open_record_ = RawRecord();
+        // Exactly its size, in one allocation: the open record keeps its buffer for the next record, and what the drawing holds has no
+        // spare capacity
+        finished_record_.data_.assign(open_record_.data_);
+        open_record_.data_.clear();
     }
     open_record_.append(gc.code, gc.value, gc.code_columns);
 }
@@ -226,6 +243,24 @@ std::string DxfReader::head_xdictionary(const RawRecord& record) {
         } else if (code == 360 && in_xdictionary) {
             return data.substr(pos, end - pos);
         }
+        pos = end + 1;
+    }
+    return {};
+}
+
+// Read as head_xdictionary()
+std::string DxfReader::head_handle(const RawRecord& record) {
+    const std::string& data = record.data_;
+    size_t pos = 0;
+    while (pos + 2 <= data.size()) {
+        int columns = 0;
+        int code = RawRecord::decode_code(static_cast<uint16_t>(static_cast<uint8_t>(data[pos]) |
+                                                                (static_cast<uint8_t>(data[pos + 1]) << 8)), columns);
+        pos += 2;
+        size_t end = data.find('\0', pos);
+        if (end == std::string::npos) end = data.size();
+        if (code == 5 || code == 105) return data.substr(pos, end - pos);
+        if (code == 100) break;
         pos = end + 1;
     }
     return {};
@@ -491,9 +526,9 @@ void DxfReader::parse_header(Drawing& dwg) {
                 bool has_20 = false;
                 Point3 pt;
                 for (const auto& v : values) {
-                    if (v.first == 10) { pt.x = std::atof(v.second.c_str()); has_10 = true; }
-                    if (v.first == 20) { pt.y = std::atof(v.second.c_str()); has_20 = true; }
-                    if (v.first == 30) { pt.z = std::atof(v.second.c_str()); }
+                    if (v.first == 10) { pt.x = parse_double_compat(v.second); has_10 = true; }
+                    if (v.first == 20) { pt.y = parse_double_compat(v.second); has_20 = true; }
+                    if (v.first == 30) { pt.z = parse_double_compat(v.second); }
                 }
 
                 if (has_10 && has_20) {
@@ -524,7 +559,7 @@ void DxfReader::parse_header(Drawing& dwg) {
                                    code == 77 || code == 78) {
                             dwg.set_header_int(var_name, code, std::atoi(values[0].second.c_str()));
                         } else if (code == 40 || code == 50) {
-                            dwg.set_header_double(var_name, code, std::atof(values[0].second.c_str()));
+                            dwg.set_header_double(var_name, code, parse_double_compat(values[0].second));
                         } else {
                             // Generic: store as string
                             dwg.set_header_string(var_name, code, values[0].second);
@@ -813,9 +848,9 @@ void DxfReader::parse_ltype_table(std::vector<Linetype>& linetypes) {
                         case 3:  lt.description = gc.value; break;
                         case 72: lt.alignment = std::atoi(gc.value.c_str()); break;
                         case 73: /* element_count — implicit in pattern vector */ break;
-                        case 40: lt.total_length = std::atof(gc.value.c_str()); break;
+                        case 40: lt.total_length = parse_double_compat(gc.value); break;
                         case 49:
-                            lt.pattern.push_back(std::atof(gc.value.c_str()));
+                            lt.pattern.push_back(parse_double_compat(gc.value));
                             lt.elements.emplace_back();
                             break;
                     }
@@ -826,10 +861,10 @@ void DxfReader::parse_ltype_table(std::vector<Linetype>& linetypes) {
                         switch (gc.code) {
                             case 74: el.type = std::atoi(gc.value.c_str()); break;
                             case 75: el.shape_number = std::atoi(gc.value.c_str()); break;
-                            case 46: el.scale = std::atof(gc.value.c_str()); break;
-                            case 50: el.rotation = std::atof(gc.value.c_str()); break;
-                            case 44: el.offset.x = std::atof(gc.value.c_str()); break;
-                            case 45: el.offset.y = std::atof(gc.value.c_str()); break;
+                            case 46: el.scale = parse_double_compat(gc.value); break;
+                            case 50: el.rotation = parse_double_compat(gc.value); break;
+                            case 44: el.offset.x = parse_double_compat(gc.value); break;
+                            case 45: el.offset.y = parse_double_compat(gc.value); break;
                             case 9:  el.text = gc.value; break;
                         }
                     }
@@ -871,11 +906,11 @@ void DxfReader::parse_style_table(std::vector<TextStyle>& styles) {
                         case 5:  s.handle = gc.value; break;
                         case 2:  s.name = gc.value; break;
                         case 70: s.flags = std::atoi(gc.value.c_str()); break;
-                        case 40: s.fixed_height = std::atof(gc.value.c_str()); break;
-                        case 41: s.width_factor = std::atof(gc.value.c_str()); break;
-                        case 50: s.oblique_angle = std::atof(gc.value.c_str()); break;
+                        case 40: s.fixed_height = parse_double_compat(gc.value); break;
+                        case 41: s.width_factor = parse_double_compat(gc.value); break;
+                        case 50: s.oblique_angle = parse_double_compat(gc.value); break;
                         case 71: s.generation_flags = std::atoi(gc.value.c_str()); break;
-                        case 42: s.last_height = std::atof(gc.value.c_str()); break;
+                        case 42: s.last_height = parse_double_compat(gc.value); break;
                         case 3:  s.font_file = gc.value; break;
                         case 4:  s.big_font = gc.value; break;
                     }
@@ -916,35 +951,35 @@ void DxfReader::parse_view_table(std::vector<View>& views) {
                         case 5:  v.handle = gc.value; break;
                         case 2:  v.name = gc.value; break;
                         case 70: v.flags = std::atoi(gc.value.c_str()); break;
-                        case 40: v.height = std::atof(gc.value.c_str()); break;
-                        case 41: v.width = std::atof(gc.value.c_str()); break;
-                        case 10: v.center.x = std::atof(gc.value.c_str()); break;
-                        case 20: v.center.y = std::atof(gc.value.c_str()); break;
-                        case 11: v.direction.x = std::atof(gc.value.c_str()); break;
-                        case 21: v.direction.y = std::atof(gc.value.c_str()); break;
-                        case 31: v.direction.z = std::atof(gc.value.c_str()); break;
-                        case 12: v.target.x = std::atof(gc.value.c_str()); break;
-                        case 22: v.target.y = std::atof(gc.value.c_str()); break;
-                        case 32: v.target.z = std::atof(gc.value.c_str()); break;
-                        case 42: v.lens_length = std::atof(gc.value.c_str()); break;
-                        case 43: v.front_clip = std::atof(gc.value.c_str()); break;
-                        case 44: v.back_clip = std::atof(gc.value.c_str()); break;
-                        case 50: v.twist = std::atof(gc.value.c_str()); break;
+                        case 40: v.height = parse_double_compat(gc.value); break;
+                        case 41: v.width = parse_double_compat(gc.value); break;
+                        case 10: v.center.x = parse_double_compat(gc.value); break;
+                        case 20: v.center.y = parse_double_compat(gc.value); break;
+                        case 11: v.direction.x = parse_double_compat(gc.value); break;
+                        case 21: v.direction.y = parse_double_compat(gc.value); break;
+                        case 31: v.direction.z = parse_double_compat(gc.value); break;
+                        case 12: v.target.x = parse_double_compat(gc.value); break;
+                        case 22: v.target.y = parse_double_compat(gc.value); break;
+                        case 32: v.target.z = parse_double_compat(gc.value); break;
+                        case 42: v.lens_length = parse_double_compat(gc.value); break;
+                        case 43: v.front_clip = parse_double_compat(gc.value); break;
+                        case 44: v.back_clip = parse_double_compat(gc.value); break;
+                        case 50: v.twist = parse_double_compat(gc.value); break;
                         case 71: v.view_mode = std::atoi(gc.value.c_str()); break;
                         // 2000+
                         case 281: v.render_mode = std::atoi(gc.value.c_str()); break;
                         case 72:  v.has_ucs = std::atoi(gc.value.c_str()) != 0; break;
-                        case 110: v.ucs_origin.x = std::atof(gc.value.c_str()); break;
-                        case 120: v.ucs_origin.y = std::atof(gc.value.c_str()); break;
-                        case 130: v.ucs_origin.z = std::atof(gc.value.c_str()); break;
-                        case 111: v.ucs_x_axis.x = std::atof(gc.value.c_str()); break;
-                        case 121: v.ucs_x_axis.y = std::atof(gc.value.c_str()); break;
-                        case 131: v.ucs_x_axis.z = std::atof(gc.value.c_str()); break;
-                        case 112: v.ucs_y_axis.x = std::atof(gc.value.c_str()); break;
-                        case 122: v.ucs_y_axis.y = std::atof(gc.value.c_str()); break;
-                        case 132: v.ucs_y_axis.z = std::atof(gc.value.c_str()); break;
+                        case 110: v.ucs_origin.x = parse_double_compat(gc.value); break;
+                        case 120: v.ucs_origin.y = parse_double_compat(gc.value); break;
+                        case 130: v.ucs_origin.z = parse_double_compat(gc.value); break;
+                        case 111: v.ucs_x_axis.x = parse_double_compat(gc.value); break;
+                        case 121: v.ucs_x_axis.y = parse_double_compat(gc.value); break;
+                        case 131: v.ucs_x_axis.z = parse_double_compat(gc.value); break;
+                        case 112: v.ucs_y_axis.x = parse_double_compat(gc.value); break;
+                        case 122: v.ucs_y_axis.y = parse_double_compat(gc.value); break;
+                        case 132: v.ucs_y_axis.z = parse_double_compat(gc.value); break;
                         case 79:  v.ucs_ortho_type = std::atoi(gc.value.c_str()); break;
-                        case 146: v.elevation = std::atof(gc.value.c_str()); break;
+                        case 146: v.elevation = parse_double_compat(gc.value); break;
                         // 2007+
                         case 73:  v.camera_plottable = std::atoi(gc.value.c_str()) != 0; break;
                         case 332: v.background_handle = gc.value; break;
@@ -989,23 +1024,23 @@ void DxfReader::parse_ucs_table(std::vector<Ucs>& ucs_list) {
                         case 5:  u.handle = gc.value; break;
                         case 2:  u.name = gc.value; break;
                         case 70: u.flags = std::atoi(gc.value.c_str()); break;
-                        case 10: u.origin.x = std::atof(gc.value.c_str()); break;
-                        case 20: u.origin.y = std::atof(gc.value.c_str()); break;
-                        case 30: u.origin.z = std::atof(gc.value.c_str()); break;
-                        case 11: u.x_dir.x = std::atof(gc.value.c_str()); break;
-                        case 21: u.x_dir.y = std::atof(gc.value.c_str()); break;
-                        case 31: u.x_dir.z = std::atof(gc.value.c_str()); break;
-                        case 12: u.y_dir.x = std::atof(gc.value.c_str()); break;
-                        case 22: u.y_dir.y = std::atof(gc.value.c_str()); break;
-                        case 32: u.y_dir.z = std::atof(gc.value.c_str()); break;
+                        case 10: u.origin.x = parse_double_compat(gc.value); break;
+                        case 20: u.origin.y = parse_double_compat(gc.value); break;
+                        case 30: u.origin.z = parse_double_compat(gc.value); break;
+                        case 11: u.x_dir.x = parse_double_compat(gc.value); break;
+                        case 21: u.x_dir.y = parse_double_compat(gc.value); break;
+                        case 31: u.x_dir.z = parse_double_compat(gc.value); break;
+                        case 12: u.y_dir.x = parse_double_compat(gc.value); break;
+                        case 22: u.y_dir.y = parse_double_compat(gc.value); break;
+                        case 32: u.y_dir.z = parse_double_compat(gc.value); break;
                         case 79: u.ortho_type = std::atoi(gc.value.c_str()); break;
-                        case 146: u.elevation = std::atof(gc.value.c_str()); break;
+                        case 146: u.elevation = parse_double_compat(gc.value); break;
                         // An orthographic view: 71, then its origin (346 is resolved to
                         // a name after reading)
                         case 71: u.orthographic.push_back({std::atoi(gc.value.c_str()), {}}); break;
-                        case 13: if (!u.orthographic.empty()) u.orthographic.back().origin.x = std::atof(gc.value.c_str()); break;
-                        case 23: if (!u.orthographic.empty()) u.orthographic.back().origin.y = std::atof(gc.value.c_str()); break;
-                        case 33: if (!u.orthographic.empty()) u.orthographic.back().origin.z = std::atof(gc.value.c_str()); break;
+                        case 13: if (!u.orthographic.empty()) u.orthographic.back().origin.x = parse_double_compat(gc.value); break;
+                        case 23: if (!u.orthographic.empty()) u.orthographic.back().origin.y = parse_double_compat(gc.value); break;
+                        case 33: if (!u.orthographic.empty()) u.orthographic.back().origin.z = parse_double_compat(gc.value); break;
                     }
                 }
             }
@@ -1044,31 +1079,31 @@ void DxfReader::parse_vport_table(std::vector<Vport>& vports) {
                         case 5:  vp.handle = gc.value; break;
                         case 2:  vp.name = gc.value; break;
                         case 70: vp.flags = std::atoi(gc.value.c_str()); break;
-                        case 10: vp.lower_left.x = std::atof(gc.value.c_str()); break;
-                        case 20: vp.lower_left.y = std::atof(gc.value.c_str()); break;
-                        case 11: vp.upper_right.x = std::atof(gc.value.c_str()); break;
-                        case 21: vp.upper_right.y = std::atof(gc.value.c_str()); break;
-                        case 12: vp.center.x = std::atof(gc.value.c_str()); break;
-                        case 22: vp.center.y = std::atof(gc.value.c_str()); break;
-                        case 13: vp.snap_base.x = std::atof(gc.value.c_str()); break;
-                        case 23: vp.snap_base.y = std::atof(gc.value.c_str()); break;
-                        case 14: vp.snap_spacing.x = std::atof(gc.value.c_str()); break;
-                        case 24: vp.snap_spacing.y = std::atof(gc.value.c_str()); break;
-                        case 15: vp.grid_spacing.x = std::atof(gc.value.c_str()); break;
-                        case 25: vp.grid_spacing.y = std::atof(gc.value.c_str()); break;
-                        case 16: vp.view_dir.x = std::atof(gc.value.c_str()); break;
-                        case 26: vp.view_dir.y = std::atof(gc.value.c_str()); break;
-                        case 36: vp.view_dir.z = std::atof(gc.value.c_str()); break;
-                        case 17: vp.target.x = std::atof(gc.value.c_str()); break;
-                        case 27: vp.target.y = std::atof(gc.value.c_str()); break;
-                        case 37: vp.target.z = std::atof(gc.value.c_str()); break;
-                        case 40: vp.view_height = std::atof(gc.value.c_str()); break;
-                        case 41: vp.aspect_ratio = std::atof(gc.value.c_str()); break;
-                        case 42: vp.lens_length = std::atof(gc.value.c_str()); break;
-                        case 43: vp.front_clip = std::atof(gc.value.c_str()); break;
-                        case 44: vp.back_clip = std::atof(gc.value.c_str()); break;
-                        case 50: vp.snap_angle = std::atof(gc.value.c_str()); break;
-                        case 51: vp.twist_angle = std::atof(gc.value.c_str()); break;
+                        case 10: vp.lower_left.x = parse_double_compat(gc.value); break;
+                        case 20: vp.lower_left.y = parse_double_compat(gc.value); break;
+                        case 11: vp.upper_right.x = parse_double_compat(gc.value); break;
+                        case 21: vp.upper_right.y = parse_double_compat(gc.value); break;
+                        case 12: vp.center.x = parse_double_compat(gc.value); break;
+                        case 22: vp.center.y = parse_double_compat(gc.value); break;
+                        case 13: vp.snap_base.x = parse_double_compat(gc.value); break;
+                        case 23: vp.snap_base.y = parse_double_compat(gc.value); break;
+                        case 14: vp.snap_spacing.x = parse_double_compat(gc.value); break;
+                        case 24: vp.snap_spacing.y = parse_double_compat(gc.value); break;
+                        case 15: vp.grid_spacing.x = parse_double_compat(gc.value); break;
+                        case 25: vp.grid_spacing.y = parse_double_compat(gc.value); break;
+                        case 16: vp.view_dir.x = parse_double_compat(gc.value); break;
+                        case 26: vp.view_dir.y = parse_double_compat(gc.value); break;
+                        case 36: vp.view_dir.z = parse_double_compat(gc.value); break;
+                        case 17: vp.target.x = parse_double_compat(gc.value); break;
+                        case 27: vp.target.y = parse_double_compat(gc.value); break;
+                        case 37: vp.target.z = parse_double_compat(gc.value); break;
+                        case 40: vp.view_height = parse_double_compat(gc.value); break;
+                        case 41: vp.aspect_ratio = parse_double_compat(gc.value); break;
+                        case 42: vp.lens_length = parse_double_compat(gc.value); break;
+                        case 43: vp.front_clip = parse_double_compat(gc.value); break;
+                        case 44: vp.back_clip = parse_double_compat(gc.value); break;
+                        case 50: vp.snap_angle = parse_double_compat(gc.value); break;
+                        case 51: vp.twist_angle = parse_double_compat(gc.value); break;
                         case 71: vp.view_mode = std::atoi(gc.value.c_str()); break;
                         case 72: vp.circle_zoom = std::atoi(gc.value.c_str()); break;
                         case 73: vp.fast_zoom = std::atoi(gc.value.c_str()); break;
@@ -1082,25 +1117,25 @@ void DxfReader::parse_vport_table(std::vector<Vport>& vports) {
                         // 2000+
                         case 281: vp.render_mode = std::atoi(gc.value.c_str()); break;
                         case 65:  vp.ucs_per_viewport = std::atoi(gc.value.c_str()) != 0; break;
-                        case 110: vp.ucs_origin.x = std::atof(gc.value.c_str()); break;
-                        case 120: vp.ucs_origin.y = std::atof(gc.value.c_str()); break;
-                        case 130: vp.ucs_origin.z = std::atof(gc.value.c_str()); break;
-                        case 111: vp.ucs_x_axis.x = std::atof(gc.value.c_str()); break;
-                        case 121: vp.ucs_x_axis.y = std::atof(gc.value.c_str()); break;
-                        case 131: vp.ucs_x_axis.z = std::atof(gc.value.c_str()); break;
-                        case 112: vp.ucs_y_axis.x = std::atof(gc.value.c_str()); break;
-                        case 122: vp.ucs_y_axis.y = std::atof(gc.value.c_str()); break;
-                        case 132: vp.ucs_y_axis.z = std::atof(gc.value.c_str()); break;
+                        case 110: vp.ucs_origin.x = parse_double_compat(gc.value); break;
+                        case 120: vp.ucs_origin.y = parse_double_compat(gc.value); break;
+                        case 130: vp.ucs_origin.z = parse_double_compat(gc.value); break;
+                        case 111: vp.ucs_x_axis.x = parse_double_compat(gc.value); break;
+                        case 121: vp.ucs_x_axis.y = parse_double_compat(gc.value); break;
+                        case 131: vp.ucs_x_axis.z = parse_double_compat(gc.value); break;
+                        case 112: vp.ucs_y_axis.x = parse_double_compat(gc.value); break;
+                        case 122: vp.ucs_y_axis.y = parse_double_compat(gc.value); break;
+                        case 132: vp.ucs_y_axis.z = parse_double_compat(gc.value); break;
                         case 79:  vp.ucs_ortho_type = std::atoi(gc.value.c_str()); break;
-                        case 146: vp.elevation = std::atof(gc.value.c_str()); break;
+                        case 146: vp.elevation = parse_double_compat(gc.value); break;
                         // 2007+
                         case 348: vp.visual_style_handle = gc.value; break;
                         case 60:  vp.grid_flags = std::atoi(gc.value.c_str()); break;
                         case 61:  vp.grid_major = std::atoi(gc.value.c_str()); break;
                         case 292: vp.default_lighting = std::atoi(gc.value.c_str()) != 0; break;
                         case 282: vp.default_lighting_type = std::atoi(gc.value.c_str()); break;
-                        case 141: vp.brightness = std::atof(gc.value.c_str()); break;
-                        case 142: vp.contrast = std::atof(gc.value.c_str()); break;
+                        case 141: vp.brightness = parse_double_compat(gc.value); break;
+                        case 142: vp.contrast = parse_double_compat(gc.value); break;
                         case 63:  vp.ambient_color = Color::from_aci(std::atoi(gc.value.c_str())); break;
                         case 421: vp.ambient_color.rgb = std::atoi(gc.value.c_str()); break;
                         case 431: vp.ambient_color.name = gc.value; break;
@@ -1162,8 +1197,8 @@ void DxfReader::parse_dimstyle_table(std::vector<DimStyle>& dimstyles) {
                         case 69:  ds.dimtfill = std::atoi(gc.value.c_str()); break;
                         case 290: ds.dimfxlon = std::atoi(gc.value.c_str()); break;
                         case 295: ds.dimtxtdirection = std::atoi(gc.value.c_str()); break;     // 2010+
-                        case 49:  ds.dimfxl = std::atof(gc.value.c_str()); break;
-                        case 50:  ds.dimjogang = std::atof(gc.value.c_str()); break;
+                        case 49:  ds.dimfxl = parse_double_compat(gc.value); break;
+                        case 50:  ds.dimjogang = parse_double_compat(gc.value); break;
                         // String variables
                         case 3:   ds.dimpost = gc.value; break;
                         case 4:   ds.dimapost = gc.value; break;
@@ -1172,24 +1207,24 @@ void DxfReader::parse_dimstyle_table(std::vector<DimStyle>& dimstyles) {
                         case 6:   ds.dimblk1 = gc.value; break;
                         case 7:   ds.dimblk2 = gc.value; break;
                         // Double variables (group 40-48)
-                        case 40:  ds.dimscale = std::atof(gc.value.c_str()); break;
-                        case 41:  ds.dimasz = std::atof(gc.value.c_str()); break;
-                        case 42:  ds.dimexo = std::atof(gc.value.c_str()); break;
-                        case 43:  ds.dimdli = std::atof(gc.value.c_str()); break;
-                        case 44:  ds.dimexe = std::atof(gc.value.c_str()); break;
-                        case 45:  ds.dimrnd = std::atof(gc.value.c_str()); break;
-                        case 46:  ds.dimdle = std::atof(gc.value.c_str()); break;
-                        case 47:  ds.dimtp = std::atof(gc.value.c_str()); break;
-                        case 48:  ds.dimtm = std::atof(gc.value.c_str()); break;
+                        case 40:  ds.dimscale = parse_double_compat(gc.value); break;
+                        case 41:  ds.dimasz = parse_double_compat(gc.value); break;
+                        case 42:  ds.dimexo = parse_double_compat(gc.value); break;
+                        case 43:  ds.dimdli = parse_double_compat(gc.value); break;
+                        case 44:  ds.dimexe = parse_double_compat(gc.value); break;
+                        case 45:  ds.dimrnd = parse_double_compat(gc.value); break;
+                        case 46:  ds.dimdle = parse_double_compat(gc.value); break;
+                        case 47:  ds.dimtp = parse_double_compat(gc.value); break;
+                        case 48:  ds.dimtm = parse_double_compat(gc.value); break;
                         // Double variables (group 140-147)
-                        case 140: ds.dimtxt = std::atof(gc.value.c_str()); break;
-                        case 141: ds.dimcen = std::atof(gc.value.c_str()); break;
-                        case 142: ds.dimtsz = std::atof(gc.value.c_str()); break;
-                        case 143: ds.dimaltf = std::atof(gc.value.c_str()); break;
-                        case 144: ds.dimlfac = std::atof(gc.value.c_str()); break;
-                        case 145: ds.dimtvp = std::atof(gc.value.c_str()); break;
-                        case 146: ds.dimtfac = std::atof(gc.value.c_str()); break;
-                        case 147: ds.dimgap = std::atof(gc.value.c_str()); break;
+                        case 140: ds.dimtxt = parse_double_compat(gc.value); break;
+                        case 141: ds.dimcen = parse_double_compat(gc.value); break;
+                        case 142: ds.dimtsz = parse_double_compat(gc.value); break;
+                        case 143: ds.dimaltf = parse_double_compat(gc.value); break;
+                        case 144: ds.dimlfac = parse_double_compat(gc.value); break;
+                        case 145: ds.dimtvp = parse_double_compat(gc.value); break;
+                        case 146: ds.dimtfac = parse_double_compat(gc.value); break;
+                        case 147: ds.dimgap = parse_double_compat(gc.value); break;
                         // Int variables (group 71-78)
                         case 71:  ds.dimtol = std::atoi(gc.value.c_str()); break;
                         case 72:  ds.dimlim = std::atoi(gc.value.c_str()); break;
@@ -1210,7 +1245,7 @@ void DxfReader::parse_dimstyle_table(std::vector<DimStyle>& dimstyles) {
                         case 177: ds.dimclre = std::atoi(gc.value.c_str()); break;
                         case 178: ds.dimclrt = std::atoi(gc.value.c_str()); break;
                         // 2000+ (the handles 340-344 are resolved to names after reading)
-                        case 148: ds.dimaltrnd = std::atof(gc.value.c_str()); break;
+                        case 148: ds.dimaltrnd = parse_double_compat(gc.value); break;
                         case 79:  ds.dimazin = std::atoi(gc.value.c_str()); break;
                         case 90:  ds.dimarcsym = std::atoi(gc.value.c_str()); break;   // 2007+
                         case 179: ds.dimadec = std::atoi(gc.value.c_str()); break;
@@ -1326,9 +1361,9 @@ void DxfReader::parse_blocks(Drawing& dwg) {
                     case 67: block_paper_space = std::atoi(gc.value.c_str()); break;
                     case 70: block_flags = std::atoi(gc.value.c_str()); break;
                     case 71: block_unloaded = std::atoi(gc.value.c_str()); break;
-                    case 10: base_point.x = std::atof(gc.value.c_str()); break;
-                    case 20: base_point.y = std::atof(gc.value.c_str()); break;
-                    case 30: base_point.z = std::atof(gc.value.c_str()); break;
+                    case 10: base_point.x = parse_double_compat(gc.value); break;
+                    case 20: base_point.y = parse_double_compat(gc.value); break;
+                    case 30: base_point.z = parse_double_compat(gc.value); break;
                     case 1:  xref_path = gc.value; break;
                     // 2000+
                     case 4:   props.description = gc.value; break;
@@ -1337,7 +1372,7 @@ void DxfReader::parse_blocks(Drawing& dwg) {
                     case 430: block_color.name = gc.value; has_block_color = true; break;
                     case 6:   props.linetype = gc.value; break;
                     case 370: props.lineweight = std::atoi(gc.value.c_str()); break;
-                    case 48:  props.linetype_scale = std::atof(gc.value.c_str()); break;
+                    case 48:  props.linetype_scale = parse_double_compat(gc.value); break;
                     case 60:  props.visible = std::atoi(gc.value.c_str()) == 0; break;
                 }
             }
@@ -1426,22 +1461,22 @@ void DxfReader::parse_common_entity_codes(Entity& entity, const GroupCode& gc) {
             entity.props.transparency.raw = std::atoi(gc.value.c_str());
             break;
         case 48:
-            entity.props.linetype_scale = std::atof(gc.value.c_str());
+            entity.props.linetype_scale = parse_double_compat(gc.value);
             break;
         case 60:
             entity.props.visible = (std::atoi(gc.value.c_str()) == 0);
             break;
         case 39:
-            entity.props.thickness = std::atof(gc.value.c_str());
+            entity.props.thickness = parse_double_compat(gc.value);
             break;
         case 210:
-            entity.props.extrusion.x = std::atof(gc.value.c_str());
+            entity.props.extrusion.x = parse_double_compat(gc.value);
             break;
         case 220:
-            entity.props.extrusion.y = std::atof(gc.value.c_str());
+            entity.props.extrusion.y = parse_double_compat(gc.value);
             break;
         case 230:
-            entity.props.extrusion.z = std::atof(gc.value.c_str());
+            entity.props.extrusion.z = parse_double_compat(gc.value);
             break;
         case 67:
             entity.props.paper_space = std::atoi(gc.value.c_str());
@@ -1668,12 +1703,12 @@ Entity DxfReader::parse_line() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.start.x = std::atof(gc.value.c_str()); break;
-            case 20: d.start.y = std::atof(gc.value.c_str()); break;
-            case 30: d.start.z = std::atof(gc.value.c_str()); break;
-            case 11: d.end.x = std::atof(gc.value.c_str()); break;
-            case 21: d.end.y = std::atof(gc.value.c_str()); break;
-            case 31: d.end.z = std::atof(gc.value.c_str()); break;
+            case 10: d.start.x = parse_double_compat(gc.value); break;
+            case 20: d.start.y = parse_double_compat(gc.value); break;
+            case 30: d.start.z = parse_double_compat(gc.value); break;
+            case 11: d.end.x = parse_double_compat(gc.value); break;
+            case 21: d.end.y = parse_double_compat(gc.value); break;
+            case 31: d.end.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1681,7 +1716,7 @@ Entity DxfReader::parse_line() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1694,10 +1729,10 @@ Entity DxfReader::parse_circle() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.center.x = std::atof(gc.value.c_str()); break;
-            case 20: d.center.y = std::atof(gc.value.c_str()); break;
-            case 30: d.center.z = std::atof(gc.value.c_str()); break;
-            case 40: d.radius = std::atof(gc.value.c_str()); break;
+            case 10: d.center.x = parse_double_compat(gc.value); break;
+            case 20: d.center.y = parse_double_compat(gc.value); break;
+            case 30: d.center.z = parse_double_compat(gc.value); break;
+            case 40: d.radius = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1705,7 +1740,7 @@ Entity DxfReader::parse_circle() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1718,12 +1753,12 @@ Entity DxfReader::parse_arc() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.center.x = std::atof(gc.value.c_str()); break;
-            case 20: d.center.y = std::atof(gc.value.c_str()); break;
-            case 30: d.center.z = std::atof(gc.value.c_str()); break;
-            case 40: d.radius = std::atof(gc.value.c_str()); break;
-            case 50: d.start_angle = std::atof(gc.value.c_str()); break;
-            case 51: d.end_angle = std::atof(gc.value.c_str()); break;
+            case 10: d.center.x = parse_double_compat(gc.value); break;
+            case 20: d.center.y = parse_double_compat(gc.value); break;
+            case 30: d.center.z = parse_double_compat(gc.value); break;
+            case 40: d.radius = parse_double_compat(gc.value); break;
+            case 50: d.start_angle = parse_double_compat(gc.value); break;
+            case 51: d.end_angle = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1731,7 +1766,7 @@ Entity DxfReader::parse_arc() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1744,10 +1779,10 @@ Entity DxfReader::parse_point() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.location.x = std::atof(gc.value.c_str()); break;
-            case 20: d.location.y = std::atof(gc.value.c_str()); break;
-            case 30: d.location.z = std::atof(gc.value.c_str()); break;
-            case 50: d.x_axis_angle = std::atof(gc.value.c_str()); break;
+            case 10: d.location.x = parse_double_compat(gc.value); break;
+            case 20: d.location.y = parse_double_compat(gc.value); break;
+            case 30: d.location.z = parse_double_compat(gc.value); break;
+            case 50: d.x_axis_angle = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1755,7 +1790,7 @@ Entity DxfReader::parse_point() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1768,21 +1803,21 @@ Entity DxfReader::parse_text() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.position.x = std::atof(gc.value.c_str()); break;
-            case 20: d.position.y = std::atof(gc.value.c_str()); break;
-            case 30: d.position.z = std::atof(gc.value.c_str()); break;
-            case 40: d.height = std::atof(gc.value.c_str()); break;
+            case 10: d.position.x = parse_double_compat(gc.value); break;
+            case 20: d.position.y = parse_double_compat(gc.value); break;
+            case 30: d.position.z = parse_double_compat(gc.value); break;
+            case 40: d.height = parse_double_compat(gc.value); break;
             case 1:  d.content = gc.value; break;
-            case 50: d.rotation = std::atof(gc.value.c_str()); break;
-            case 41: d.width_factor = std::atof(gc.value.c_str()); break;
-            case 51: d.oblique_angle = std::atof(gc.value.c_str()); break;
+            case 50: d.rotation = parse_double_compat(gc.value); break;
+            case 41: d.width_factor = parse_double_compat(gc.value); break;
+            case 51: d.oblique_angle = parse_double_compat(gc.value); break;
             case 7:  d.style = gc.value; break;
             case 71: if (text_subclass()) d.generation_flags = std::atoi(gc.value.c_str()); break;
             case 72: if (text_subclass()) d.h_justify = std::atoi(gc.value.c_str()); break;
             case 73: d.v_justify = std::atoi(gc.value.c_str()); break;
-            case 11: d.alignment_point.x = std::atof(gc.value.c_str()); break;
-            case 21: d.alignment_point.y = std::atof(gc.value.c_str()); break;
-            case 31: d.alignment_point.z = std::atof(gc.value.c_str()); break;
+            case 11: d.alignment_point.x = parse_double_compat(gc.value); break;
+            case 21: d.alignment_point.y = parse_double_compat(gc.value); break;
+            case 31: d.alignment_point.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1790,7 +1825,7 @@ Entity DxfReader::parse_text() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1809,11 +1844,11 @@ Entity DxfReader::parse_polyline() {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
             case 70: d.flags = std::atoi(gc.value.c_str()); break;
-            case 10: d.header_x = std::atof(gc.value.c_str()); break;
-            case 20: d.header_y = std::atof(gc.value.c_str()); break;
-            case 30: d.elevation = std::atof(gc.value.c_str()); break;
-            case 40: d.default_start_width = std::atof(gc.value.c_str()); break;
-            case 41: d.default_end_width = std::atof(gc.value.c_str()); break;
+            case 10: d.header_x = parse_double_compat(gc.value); break;
+            case 20: d.header_y = parse_double_compat(gc.value); break;
+            case 30: d.elevation = parse_double_compat(gc.value); break;
+            case 40: d.default_start_width = parse_double_compat(gc.value); break;
+            case 41: d.default_end_width = parse_double_compat(gc.value); break;
             case 71: d.m_count = std::atoi(gc.value.c_str()); break;
             case 72: d.n_count = std::atoi(gc.value.c_str()); break;
             case 73: d.smooth_m = std::atoi(gc.value.c_str()); break;
@@ -1849,14 +1884,14 @@ Entity DxfReader::parse_polyline() {
                 while (read_group(gc)) {
                     if (gc.code == 0) { push_back(gc); break; }
                     switch (gc.code) {
-                        case 10: vtx.position.x = std::atof(gc.value.c_str()); break;
-                        case 20: vtx.position.y = std::atof(gc.value.c_str()); break;
-                        case 30: vtx.position.z = std::atof(gc.value.c_str()); break;
-                        case 40: vtx.start_width = std::atof(gc.value.c_str()); break;
-                        case 41: vtx.end_width = std::atof(gc.value.c_str()); break;
-                        case 42: vtx.bulge = std::atof(gc.value.c_str()); break;
+                        case 10: vtx.position.x = parse_double_compat(gc.value); break;
+                        case 20: vtx.position.y = parse_double_compat(gc.value); break;
+                        case 30: vtx.position.z = parse_double_compat(gc.value); break;
+                        case 40: vtx.start_width = parse_double_compat(gc.value); break;
+                        case 41: vtx.end_width = parse_double_compat(gc.value); break;
+                        case 42: vtx.bulge = parse_double_compat(gc.value); break;
                         case 70: vtx.flags = std::atoi(gc.value.c_str()); break;
-                        case 50: vtx.tangent = std::atof(gc.value.c_str()); break;
+                        case 50: vtx.tangent = parse_double_compat(gc.value); break;
                         case 71: vtx.face[0] = std::atoi(gc.value.c_str()); break;
                         case 72: vtx.face[1] = std::atoi(gc.value.c_str()); break;
                         case 73: vtx.face[2] = std::atoi(gc.value.c_str()); break;
@@ -1889,7 +1924,8 @@ Entity DxfReader::parse_polyline() {
         }
     }
 
-    entity.data = d;
+    fit_capacity(d.vertices);
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1906,18 +1942,18 @@ Entity DxfReader::parse_trace() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.p0.x = std::atof(gc.value.c_str()); break;
-            case 20: d.p0.y = std::atof(gc.value.c_str()); break;
-            case 30: d.p0.z = std::atof(gc.value.c_str()); break;
-            case 11: d.p1.x = std::atof(gc.value.c_str()); break;
-            case 21: d.p1.y = std::atof(gc.value.c_str()); break;
-            case 31: d.p1.z = std::atof(gc.value.c_str()); break;
-            case 12: d.p2.x = std::atof(gc.value.c_str()); break;
-            case 22: d.p2.y = std::atof(gc.value.c_str()); break;
-            case 32: d.p2.z = std::atof(gc.value.c_str()); break;
-            case 13: d.p3.x = std::atof(gc.value.c_str()); break;
-            case 23: d.p3.y = std::atof(gc.value.c_str()); break;
-            case 33: d.p3.z = std::atof(gc.value.c_str()); break;
+            case 10: d.p0.x = parse_double_compat(gc.value); break;
+            case 20: d.p0.y = parse_double_compat(gc.value); break;
+            case 30: d.p0.z = parse_double_compat(gc.value); break;
+            case 11: d.p1.x = parse_double_compat(gc.value); break;
+            case 21: d.p1.y = parse_double_compat(gc.value); break;
+            case 31: d.p1.z = parse_double_compat(gc.value); break;
+            case 12: d.p2.x = parse_double_compat(gc.value); break;
+            case 22: d.p2.y = parse_double_compat(gc.value); break;
+            case 32: d.p2.z = parse_double_compat(gc.value); break;
+            case 13: d.p3.x = parse_double_compat(gc.value); break;
+            case 23: d.p3.y = parse_double_compat(gc.value); break;
+            case 33: d.p3.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1925,7 +1961,7 @@ Entity DxfReader::parse_trace() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1942,18 +1978,18 @@ Entity DxfReader::parse_solid() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.p0.x = std::atof(gc.value.c_str()); break;
-            case 20: d.p0.y = std::atof(gc.value.c_str()); break;
-            case 30: d.p0.z = std::atof(gc.value.c_str()); break;
-            case 11: d.p1.x = std::atof(gc.value.c_str()); break;
-            case 21: d.p1.y = std::atof(gc.value.c_str()); break;
-            case 31: d.p1.z = std::atof(gc.value.c_str()); break;
-            case 12: d.p2.x = std::atof(gc.value.c_str()); break;
-            case 22: d.p2.y = std::atof(gc.value.c_str()); break;
-            case 32: d.p2.z = std::atof(gc.value.c_str()); break;
-            case 13: d.p3.x = std::atof(gc.value.c_str()); break;
-            case 23: d.p3.y = std::atof(gc.value.c_str()); break;
-            case 33: d.p3.z = std::atof(gc.value.c_str()); break;
+            case 10: d.p0.x = parse_double_compat(gc.value); break;
+            case 20: d.p0.y = parse_double_compat(gc.value); break;
+            case 30: d.p0.z = parse_double_compat(gc.value); break;
+            case 11: d.p1.x = parse_double_compat(gc.value); break;
+            case 21: d.p1.y = parse_double_compat(gc.value); break;
+            case 31: d.p1.z = parse_double_compat(gc.value); break;
+            case 12: d.p2.x = parse_double_compat(gc.value); break;
+            case 22: d.p2.y = parse_double_compat(gc.value); break;
+            case 32: d.p2.z = parse_double_compat(gc.value); break;
+            case 13: d.p3.x = parse_double_compat(gc.value); break;
+            case 23: d.p3.y = parse_double_compat(gc.value); break;
+            case 33: d.p3.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -1961,7 +1997,7 @@ Entity DxfReader::parse_solid() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -1978,18 +2014,18 @@ Entity DxfReader::parse_3dface() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.p0.x = std::atof(gc.value.c_str()); break;
-            case 20: d.p0.y = std::atof(gc.value.c_str()); break;
-            case 30: d.p0.z = std::atof(gc.value.c_str()); break;
-            case 11: d.p1.x = std::atof(gc.value.c_str()); break;
-            case 21: d.p1.y = std::atof(gc.value.c_str()); break;
-            case 31: d.p1.z = std::atof(gc.value.c_str()); break;
-            case 12: d.p2.x = std::atof(gc.value.c_str()); break;
-            case 22: d.p2.y = std::atof(gc.value.c_str()); break;
-            case 32: d.p2.z = std::atof(gc.value.c_str()); break;
-            case 13: d.p3.x = std::atof(gc.value.c_str()); break;
-            case 23: d.p3.y = std::atof(gc.value.c_str()); break;
-            case 33: d.p3.z = std::atof(gc.value.c_str()); break;
+            case 10: d.p0.x = parse_double_compat(gc.value); break;
+            case 20: d.p0.y = parse_double_compat(gc.value); break;
+            case 30: d.p0.z = parse_double_compat(gc.value); break;
+            case 11: d.p1.x = parse_double_compat(gc.value); break;
+            case 21: d.p1.y = parse_double_compat(gc.value); break;
+            case 31: d.p1.z = parse_double_compat(gc.value); break;
+            case 12: d.p2.x = parse_double_compat(gc.value); break;
+            case 22: d.p2.y = parse_double_compat(gc.value); break;
+            case 32: d.p2.z = parse_double_compat(gc.value); break;
+            case 13: d.p3.x = parse_double_compat(gc.value); break;
+            case 23: d.p3.y = parse_double_compat(gc.value); break;
+            case 33: d.p3.z = parse_double_compat(gc.value); break;
             case 70: d.invisible_edges = std::atoi(gc.value.c_str()); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
@@ -1998,7 +2034,7 @@ Entity DxfReader::parse_3dface() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2015,14 +2051,14 @@ Entity DxfReader::parse_shape() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.insertion_point.x = std::atof(gc.value.c_str()); break;
-            case 20: d.insertion_point.y = std::atof(gc.value.c_str()); break;
-            case 30: d.insertion_point.z = std::atof(gc.value.c_str()); break;
-            case 40: d.size = std::atof(gc.value.c_str()); break;
+            case 10: d.insertion_point.x = parse_double_compat(gc.value); break;
+            case 20: d.insertion_point.y = parse_double_compat(gc.value); break;
+            case 30: d.insertion_point.z = parse_double_compat(gc.value); break;
+            case 40: d.size = parse_double_compat(gc.value); break;
             case 2:  d.name = gc.value; break;
-            case 50: d.rotation = std::atof(gc.value.c_str()); break;
-            case 41: d.x_scale = std::atof(gc.value.c_str()); break;
-            case 51: d.oblique_angle = std::atof(gc.value.c_str()); break;
+            case 50: d.rotation = parse_double_compat(gc.value); break;
+            case 41: d.x_scale = parse_double_compat(gc.value); break;
+            case 51: d.oblique_angle = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2030,7 +2066,7 @@ Entity DxfReader::parse_shape() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2049,17 +2085,17 @@ Entity DxfReader::parse_insert() {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
             case 2:  d.block_name = gc.value; break;
-            case 10: d.insertion_point.x = std::atof(gc.value.c_str()); break;
-            case 20: d.insertion_point.y = std::atof(gc.value.c_str()); break;
-            case 30: d.insertion_point.z = std::atof(gc.value.c_str()); break;
-            case 41: d.x_scale = std::atof(gc.value.c_str()); break;
-            case 42: d.y_scale = std::atof(gc.value.c_str()); break;
-            case 43: d.z_scale = std::atof(gc.value.c_str()); break;
-            case 50: d.rotation = std::atof(gc.value.c_str()); break;
+            case 10: d.insertion_point.x = parse_double_compat(gc.value); break;
+            case 20: d.insertion_point.y = parse_double_compat(gc.value); break;
+            case 30: d.insertion_point.z = parse_double_compat(gc.value); break;
+            case 41: d.x_scale = parse_double_compat(gc.value); break;
+            case 42: d.y_scale = parse_double_compat(gc.value); break;
+            case 43: d.z_scale = parse_double_compat(gc.value); break;
+            case 50: d.rotation = parse_double_compat(gc.value); break;
             case 70: d.column_count = std::atoi(gc.value.c_str()); break;
             case 71: d.row_count = std::atoi(gc.value.c_str()); break;
-            case 44: d.column_spacing = std::atof(gc.value.c_str()); break;
-            case 45: d.row_spacing = std::atof(gc.value.c_str()); break;
+            case 44: d.column_spacing = parse_double_compat(gc.value); break;
+            case 45: d.row_spacing = parse_double_compat(gc.value); break;
             case 66: attribs_follow = std::atoi(gc.value.c_str()); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
@@ -2093,10 +2129,10 @@ Entity DxfReader::parse_insert() {
                         if (gc.code == 0) { push_back(gc); break; }
                         if (multiline_group(ia.data.multiline, multiline, gc)) continue;
                         switch (gc.code) {
-                            case 10: ia.data.start_point.x = std::atof(gc.value.c_str()); break;
-                            case 20: ia.data.start_point.y = std::atof(gc.value.c_str()); break;
-                            case 30: ia.data.start_point.z = std::atof(gc.value.c_str()); break;
-                            case 40: ia.data.height = std::atof(gc.value.c_str()); break;
+                            case 10: ia.data.start_point.x = parse_double_compat(gc.value); break;
+                            case 20: ia.data.start_point.y = parse_double_compat(gc.value); break;
+                            case 30: ia.data.start_point.z = parse_double_compat(gc.value); break;
+                            case 40: ia.data.height = parse_double_compat(gc.value); break;
                             case 1:  ia.data.value = gc.value; break;
                             case 2:  ia.data.tag = gc.value; tag_read = true; break;
                             // The first 280 is the version (2010+), the one after the tag the lock
@@ -2106,16 +2142,16 @@ Entity DxfReader::parse_insert() {
                                 break;
                             case 70: ia.data.flags = std::atoi(gc.value.c_str()); break;
                             case 73: ia.data.field_length = std::atoi(gc.value.c_str()); break;
-                            case 50: ia.data.rotation = std::atof(gc.value.c_str()); break;
-                            case 41: ia.data.width_factor = std::atof(gc.value.c_str()); break;
-                            case 51: ia.data.oblique_angle = std::atof(gc.value.c_str()); break;
+                            case 50: ia.data.rotation = parse_double_compat(gc.value); break;
+                            case 41: ia.data.width_factor = parse_double_compat(gc.value); break;
+                            case 51: ia.data.oblique_angle = parse_double_compat(gc.value); break;
                             case 7:  ia.data.style = gc.value; break;
                             case 71: if (text_subclass()) ia.data.generation_flags = std::atoi(gc.value.c_str()); break;
                             case 72: if (text_subclass()) ia.data.h_justify = std::atoi(gc.value.c_str()); break;
                             case 74: ia.data.v_justify = std::atoi(gc.value.c_str()); break;
-                            case 11: ia.data.alignment_point.x = std::atof(gc.value.c_str()); break;
-                            case 21: ia.data.alignment_point.y = std::atof(gc.value.c_str()); break;
-                            case 31: ia.data.alignment_point.z = std::atof(gc.value.c_str()); break;
+                            case 11: ia.data.alignment_point.x = parse_double_compat(gc.value); break;
+                            case 21: ia.data.alignment_point.y = parse_double_compat(gc.value); break;
+                            case 31: ia.data.alignment_point.z = parse_double_compat(gc.value); break;
                             // Common entity props for the attribute itself
                             case 8:  ia.props.layer = gc.value; break;
                             case 6:  ia.props.linetype = gc.value; break;
@@ -2123,12 +2159,12 @@ Entity DxfReader::parse_insert() {
                             case 420: ia.props.color.rgb = std::atoi(gc.value.c_str()); break;
                             case 430: ia.props.color.name = gc.value; break;
                             case 440: ia.props.transparency.raw = std::atoi(gc.value.c_str()); break;
-                            case 48: ia.props.linetype_scale = std::atof(gc.value.c_str()); break;
+                            case 48: ia.props.linetype_scale = parse_double_compat(gc.value); break;
                             case 60: ia.props.visible = (std::atoi(gc.value.c_str()) == 0); break;
-                            case 39: ia.props.thickness = std::atof(gc.value.c_str()); break;
-                            case 210: ia.props.extrusion.x = std::atof(gc.value.c_str()); break;
-                            case 220: ia.props.extrusion.y = std::atof(gc.value.c_str()); break;
-                            case 230: ia.props.extrusion.z = std::atof(gc.value.c_str()); break;
+                            case 39: ia.props.thickness = parse_double_compat(gc.value); break;
+                            case 210: ia.props.extrusion.x = parse_double_compat(gc.value); break;
+                            case 220: ia.props.extrusion.y = parse_double_compat(gc.value); break;
+                            case 230: ia.props.extrusion.z = parse_double_compat(gc.value); break;
                             case 67: ia.props.paper_space = std::atoi(gc.value.c_str()); break;
                             case 5:  ia.props.handle = gc.value; break;
                             case 370: ia.props.lineweight = std::atoi(gc.value.c_str()); break;
@@ -2162,7 +2198,8 @@ Entity DxfReader::parse_insert() {
         }
     }
 
-    entity.data = d;
+    fit_capacity(d.attributes);
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2183,10 +2220,10 @@ Entity DxfReader::parse_attdef() {
         if (gc.code == 0) { push_back(gc); break; }
         if (multiline_group(d.multiline, multiline, gc)) continue;
         switch (gc.code) {
-            case 10: d.start_point.x = std::atof(gc.value.c_str()); break;
-            case 20: d.start_point.y = std::atof(gc.value.c_str()); break;
-            case 30: d.start_point.z = std::atof(gc.value.c_str()); break;
-            case 40: d.height = std::atof(gc.value.c_str()); break;
+            case 10: d.start_point.x = parse_double_compat(gc.value); break;
+            case 20: d.start_point.y = parse_double_compat(gc.value); break;
+            case 30: d.start_point.z = parse_double_compat(gc.value); break;
+            case 40: d.height = parse_double_compat(gc.value); break;
             case 1:  d.default_value = gc.value; break;
             case 3:  d.prompt = gc.value; break;
             case 2:  d.tag = gc.value; tag_read = true; break;
@@ -2197,16 +2234,16 @@ Entity DxfReader::parse_attdef() {
                 break;
             case 70: d.flags = std::atoi(gc.value.c_str()); break;
             case 73: d.field_length = std::atoi(gc.value.c_str()); break;
-            case 50: d.rotation = std::atof(gc.value.c_str()); break;
-            case 41: d.width_factor = std::atof(gc.value.c_str()); break;
-            case 51: d.oblique_angle = std::atof(gc.value.c_str()); break;
+            case 50: d.rotation = parse_double_compat(gc.value); break;
+            case 41: d.width_factor = parse_double_compat(gc.value); break;
+            case 51: d.oblique_angle = parse_double_compat(gc.value); break;
             case 7:  d.style = gc.value; break;
             case 71: if (text_subclass()) d.generation_flags = std::atoi(gc.value.c_str()); break;
             case 72: if (text_subclass()) d.h_justify = std::atoi(gc.value.c_str()); break;
             case 74: d.v_justify = std::atoi(gc.value.c_str()); break;
-            case 11: d.alignment_point.x = std::atof(gc.value.c_str()); break;
-            case 21: d.alignment_point.y = std::atof(gc.value.c_str()); break;
-            case 31: d.alignment_point.z = std::atof(gc.value.c_str()); break;
+            case 11: d.alignment_point.x = parse_double_compat(gc.value); break;
+            case 21: d.alignment_point.y = parse_double_compat(gc.value); break;
+            case 31: d.alignment_point.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2217,7 +2254,7 @@ Entity DxfReader::parse_attdef() {
     finish_multiline(d.multiline, multiline, entity.props.extrusion);
 
     take_attribute_lock(entity.props.xdata, d.lock_position);
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2238,10 +2275,10 @@ Entity DxfReader::parse_attrib() {
         if (gc.code == 0) { push_back(gc); break; }
         if (multiline_group(d.multiline, multiline, gc)) continue;
         switch (gc.code) {
-            case 10: d.start_point.x = std::atof(gc.value.c_str()); break;
-            case 20: d.start_point.y = std::atof(gc.value.c_str()); break;
-            case 30: d.start_point.z = std::atof(gc.value.c_str()); break;
-            case 40: d.height = std::atof(gc.value.c_str()); break;
+            case 10: d.start_point.x = parse_double_compat(gc.value); break;
+            case 20: d.start_point.y = parse_double_compat(gc.value); break;
+            case 30: d.start_point.z = parse_double_compat(gc.value); break;
+            case 40: d.height = parse_double_compat(gc.value); break;
             case 1:  d.value = gc.value; break;
             case 2:  d.tag = gc.value; tag_read = true; break;
             // The first 280 is the version (2010+), the one after the tag the lock
@@ -2251,16 +2288,16 @@ Entity DxfReader::parse_attrib() {
                 break;
             case 70: d.flags = std::atoi(gc.value.c_str()); break;
             case 73: d.field_length = std::atoi(gc.value.c_str()); break;
-            case 50: d.rotation = std::atof(gc.value.c_str()); break;
-            case 41: d.width_factor = std::atof(gc.value.c_str()); break;
-            case 51: d.oblique_angle = std::atof(gc.value.c_str()); break;
+            case 50: d.rotation = parse_double_compat(gc.value); break;
+            case 41: d.width_factor = parse_double_compat(gc.value); break;
+            case 51: d.oblique_angle = parse_double_compat(gc.value); break;
             case 7:  d.style = gc.value; break;
             case 71: if (text_subclass()) d.generation_flags = std::atoi(gc.value.c_str()); break;
             case 72: if (text_subclass()) d.h_justify = std::atoi(gc.value.c_str()); break;
             case 74: d.v_justify = std::atoi(gc.value.c_str()); break;
-            case 11: d.alignment_point.x = std::atof(gc.value.c_str()); break;
-            case 21: d.alignment_point.y = std::atof(gc.value.c_str()); break;
-            case 31: d.alignment_point.z = std::atof(gc.value.c_str()); break;
+            case 11: d.alignment_point.x = parse_double_compat(gc.value); break;
+            case 21: d.alignment_point.y = parse_double_compat(gc.value); break;
+            case 31: d.alignment_point.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2271,7 +2308,7 @@ Entity DxfReader::parse_attrib() {
     finish_multiline(d.multiline, multiline, entity.props.extrusion);
 
     take_attribute_lock(entity.props.xdata, d.lock_position);
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2290,15 +2327,15 @@ Entity DxfReader::parse_dimension() {
         switch (gc.code) {
             case 2:  d.block_name = gc.value; break;
             case 3:  d.dim_style = gc.value; break;
-            case 10: d.definition_point.x = std::atof(gc.value.c_str()); break;
-            case 20: d.definition_point.y = std::atof(gc.value.c_str()); break;
-            case 30: d.definition_point.z = std::atof(gc.value.c_str()); break;
-            case 11: d.text_midpoint.x = std::atof(gc.value.c_str()); break;
-            case 21: d.text_midpoint.y = std::atof(gc.value.c_str()); break;
-            case 31: d.text_midpoint.z = std::atof(gc.value.c_str()); break;
-            case 12: d.block_translation.x = std::atof(gc.value.c_str()); break;
-            case 22: d.block_translation.y = std::atof(gc.value.c_str()); break;
-            case 32: d.block_translation.z = std::atof(gc.value.c_str()); break;
+            case 10: d.definition_point.x = parse_double_compat(gc.value); break;
+            case 20: d.definition_point.y = parse_double_compat(gc.value); break;
+            case 30: d.definition_point.z = parse_double_compat(gc.value); break;
+            case 11: d.text_midpoint.x = parse_double_compat(gc.value); break;
+            case 21: d.text_midpoint.y = parse_double_compat(gc.value); break;
+            case 31: d.text_midpoint.z = parse_double_compat(gc.value); break;
+            case 12: d.block_translation.x = parse_double_compat(gc.value); break;
+            case 22: d.block_translation.y = parse_double_compat(gc.value); break;
+            case 32: d.block_translation.z = parse_double_compat(gc.value); break;
             case 70: {
                 int flags = std::atoi(gc.value.c_str());
                 d.flags = flags;
@@ -2306,23 +2343,23 @@ Entity DxfReader::parse_dimension() {
                 break;
             }
             case 1:  d.text_override = gc.value; break;
-            case 13: d.def_point2.x = std::atof(gc.value.c_str()); break;
-            case 23: d.def_point2.y = std::atof(gc.value.c_str()); break;
-            case 33: d.def_point2.z = std::atof(gc.value.c_str()); break;
-            case 14: d.def_point3.x = std::atof(gc.value.c_str()); break;
-            case 24: d.def_point3.y = std::atof(gc.value.c_str()); break;
-            case 34: d.def_point3.z = std::atof(gc.value.c_str()); break;
-            case 15: d.def_point4.x = std::atof(gc.value.c_str()); break;
-            case 25: d.def_point4.y = std::atof(gc.value.c_str()); break;
-            case 35: d.def_point4.z = std::atof(gc.value.c_str()); break;
-            case 16: d.arc_point.x = std::atof(gc.value.c_str()); break;
-            case 26: d.arc_point.y = std::atof(gc.value.c_str()); break;
-            case 36: d.arc_point.z = std::atof(gc.value.c_str()); break;
-            case 40: d.leader_length = std::atof(gc.value.c_str()); break;
-            case 50: d.rotation = std::atof(gc.value.c_str()); break;
-            case 51: d.horizontal_dir = std::atof(gc.value.c_str()); break;
-            case 52: d.oblique_angle = std::atof(gc.value.c_str()); break;
-            case 53: d.text_rotation = std::atof(gc.value.c_str()); break;
+            case 13: d.def_point2.x = parse_double_compat(gc.value); break;
+            case 23: d.def_point2.y = parse_double_compat(gc.value); break;
+            case 33: d.def_point2.z = parse_double_compat(gc.value); break;
+            case 14: d.def_point3.x = parse_double_compat(gc.value); break;
+            case 24: d.def_point3.y = parse_double_compat(gc.value); break;
+            case 34: d.def_point3.z = parse_double_compat(gc.value); break;
+            case 15: d.def_point4.x = parse_double_compat(gc.value); break;
+            case 25: d.def_point4.y = parse_double_compat(gc.value); break;
+            case 35: d.def_point4.z = parse_double_compat(gc.value); break;
+            case 16: d.arc_point.x = parse_double_compat(gc.value); break;
+            case 26: d.arc_point.y = parse_double_compat(gc.value); break;
+            case 36: d.arc_point.z = parse_double_compat(gc.value); break;
+            case 40: d.leader_length = parse_double_compat(gc.value); break;
+            case 50: d.rotation = parse_double_compat(gc.value); break;
+            case 51: d.horizontal_dir = parse_double_compat(gc.value); break;
+            case 52: d.oblique_angle = parse_double_compat(gc.value); break;
+            case 53: d.text_rotation = parse_double_compat(gc.value); break;
             case 280:
                 if (subclass_ == "AcDbDimension") d.version = std::atoi(gc.value.c_str());
                 else parse_common_entity_codes(entity, gc);
@@ -2343,7 +2380,7 @@ Entity DxfReader::parse_dimension() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2360,34 +2397,34 @@ Entity DxfReader::parse_viewport() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.center.x = std::atof(gc.value.c_str()); break;
-            case 20: d.center.y = std::atof(gc.value.c_str()); break;
-            case 30: d.center.z = std::atof(gc.value.c_str()); break;
-            case 40: d.width = std::atof(gc.value.c_str()); break;
-            case 41: d.height = std::atof(gc.value.c_str()); break;
+            case 10: d.center.x = parse_double_compat(gc.value); break;
+            case 20: d.center.y = parse_double_compat(gc.value); break;
+            case 30: d.center.z = parse_double_compat(gc.value); break;
+            case 40: d.width = parse_double_compat(gc.value); break;
+            case 41: d.height = parse_double_compat(gc.value); break;
             case 68: d.status = std::atoi(gc.value.c_str()); break;
             case 69: d.id = std::atoi(gc.value.c_str()); break;
             // 2000+ (frozen layers, 331, are resolved to names after reading)
-            case 12: d.view_center.x = std::atof(gc.value.c_str()); break;
-            case 22: d.view_center.y = std::atof(gc.value.c_str()); break;
-            case 13: d.snap_base.x = std::atof(gc.value.c_str()); break;
-            case 23: d.snap_base.y = std::atof(gc.value.c_str()); break;
-            case 14: d.snap_spacing.x = std::atof(gc.value.c_str()); break;
-            case 24: d.snap_spacing.y = std::atof(gc.value.c_str()); break;
-            case 15: d.grid_spacing.x = std::atof(gc.value.c_str()); break;
-            case 25: d.grid_spacing.y = std::atof(gc.value.c_str()); break;
-            case 16: d.view_direction.x = std::atof(gc.value.c_str()); break;
-            case 26: d.view_direction.y = std::atof(gc.value.c_str()); break;
-            case 36: d.view_direction.z = std::atof(gc.value.c_str()); break;
-            case 17: d.view_target.x = std::atof(gc.value.c_str()); break;
-            case 27: d.view_target.y = std::atof(gc.value.c_str()); break;
-            case 37: d.view_target.z = std::atof(gc.value.c_str()); break;
-            case 42: d.lens_length = std::atof(gc.value.c_str()); break;
-            case 43: d.front_clip = std::atof(gc.value.c_str()); break;
-            case 44: d.back_clip = std::atof(gc.value.c_str()); break;
-            case 45: d.view_height = std::atof(gc.value.c_str()); break;
-            case 50: d.snap_angle = std::atof(gc.value.c_str()); break;
-            case 51: d.twist_angle = std::atof(gc.value.c_str()); break;
+            case 12: d.view_center.x = parse_double_compat(gc.value); break;
+            case 22: d.view_center.y = parse_double_compat(gc.value); break;
+            case 13: d.snap_base.x = parse_double_compat(gc.value); break;
+            case 23: d.snap_base.y = parse_double_compat(gc.value); break;
+            case 14: d.snap_spacing.x = parse_double_compat(gc.value); break;
+            case 24: d.snap_spacing.y = parse_double_compat(gc.value); break;
+            case 15: d.grid_spacing.x = parse_double_compat(gc.value); break;
+            case 25: d.grid_spacing.y = parse_double_compat(gc.value); break;
+            case 16: d.view_direction.x = parse_double_compat(gc.value); break;
+            case 26: d.view_direction.y = parse_double_compat(gc.value); break;
+            case 36: d.view_direction.z = parse_double_compat(gc.value); break;
+            case 17: d.view_target.x = parse_double_compat(gc.value); break;
+            case 27: d.view_target.y = parse_double_compat(gc.value); break;
+            case 37: d.view_target.z = parse_double_compat(gc.value); break;
+            case 42: d.lens_length = parse_double_compat(gc.value); break;
+            case 43: d.front_clip = parse_double_compat(gc.value); break;
+            case 44: d.back_clip = parse_double_compat(gc.value); break;
+            case 45: d.view_height = parse_double_compat(gc.value); break;
+            case 50: d.snap_angle = parse_double_compat(gc.value); break;
+            case 51: d.twist_angle = parse_double_compat(gc.value); break;
             case 72: d.circle_zoom = std::atoi(gc.value.c_str()); break;
             case 90: d.status_flags = std::atoi(gc.value.c_str()); break;
             case 1:  d.plot_style_sheet = gc.value; break;
@@ -2395,17 +2432,17 @@ Entity DxfReader::parse_viewport() {
             case 281: d.render_mode = std::atoi(gc.value.c_str()); break;
             case 71: d.ucs_per_viewport = std::atoi(gc.value.c_str()); break;
             case 74: d.ucs_icon = std::atoi(gc.value.c_str()); break;
-            case 110: d.ucs_origin.x = std::atof(gc.value.c_str()); break;
-            case 120: d.ucs_origin.y = std::atof(gc.value.c_str()); break;
-            case 130: d.ucs_origin.z = std::atof(gc.value.c_str()); break;
-            case 111: d.ucs_x_axis.x = std::atof(gc.value.c_str()); break;
-            case 121: d.ucs_x_axis.y = std::atof(gc.value.c_str()); break;
-            case 131: d.ucs_x_axis.z = std::atof(gc.value.c_str()); break;
-            case 112: d.ucs_y_axis.x = std::atof(gc.value.c_str()); break;
-            case 122: d.ucs_y_axis.y = std::atof(gc.value.c_str()); break;
-            case 132: d.ucs_y_axis.z = std::atof(gc.value.c_str()); break;
+            case 110: d.ucs_origin.x = parse_double_compat(gc.value); break;
+            case 120: d.ucs_origin.y = parse_double_compat(gc.value); break;
+            case 130: d.ucs_origin.z = parse_double_compat(gc.value); break;
+            case 111: d.ucs_x_axis.x = parse_double_compat(gc.value); break;
+            case 121: d.ucs_x_axis.y = parse_double_compat(gc.value); break;
+            case 131: d.ucs_x_axis.z = parse_double_compat(gc.value); break;
+            case 112: d.ucs_y_axis.x = parse_double_compat(gc.value); break;
+            case 122: d.ucs_y_axis.y = parse_double_compat(gc.value); break;
+            case 132: d.ucs_y_axis.z = parse_double_compat(gc.value); break;
             case 79: d.ucs_ortho_type = std::atoi(gc.value.c_str()); break;
-            case 146: d.elevation = std::atof(gc.value.c_str()); break;
+            case 146: d.elevation = parse_double_compat(gc.value); break;
             case 170: d.shade_plot_mode = std::atoi(gc.value.c_str()); break;
             // 2007+
             case 61:  d.grid_major = std::atoi(gc.value.c_str()); break;
@@ -2415,8 +2452,8 @@ Entity DxfReader::parse_viewport() {
                 break;
             case 292: d.default_lighting = std::atoi(gc.value.c_str()) != 0; break;
             case 282: d.default_lighting_type = std::atoi(gc.value.c_str()); break;
-            case 141: d.brightness = std::atof(gc.value.c_str()); break;
-            case 142: d.contrast = std::atof(gc.value.c_str()); break;
+            case 141: d.brightness = parse_double_compat(gc.value); break;
+            case 142: d.contrast = parse_double_compat(gc.value); break;
             case 63:  d.ambient_color = Color::from_aci(std::atoi(gc.value.c_str())); break;
             case 421: d.ambient_color.rgb = std::atoi(gc.value.c_str()); break;
             case 431: d.ambient_color.name = gc.value; break;
@@ -2441,7 +2478,8 @@ Entity DxfReader::parse_viewport() {
             }
         }
     }
-    entity.data = d;
+    fit_capacity(d.frozen_layers);
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2464,24 +2502,24 @@ Entity DxfReader::parse_lwpolyline() {
         LwVertex* v = d.vertices.empty() ? nullptr : &d.vertices.back();
         switch (gc.code) {
             case 70: d.flags = std::atoi(gc.value.c_str()); break;
-            case 38: d.elevation = std::atof(gc.value.c_str()); break;
-            case 43: constant_width = std::atof(gc.value.c_str()); break;
+            case 38: d.elevation = parse_double_compat(gc.value); break;
+            case 43: constant_width = parse_double_compat(gc.value); break;
             case 90: break;
             case 91: if (v) v->id = std::atoi(gc.value.c_str()); break;
             case 10:
                 d.vertices.emplace_back();
-                d.vertices.back().position.x = std::atof(gc.value.c_str());
+                d.vertices.back().position.x = parse_double_compat(gc.value);
                 break;
-            case 20: if (v) v->position.y = std::atof(gc.value.c_str()); break;
+            case 20: if (v) v->position.y = parse_double_compat(gc.value); break;
             case 40:
-                if (v) v->start_width = std::atof(gc.value.c_str());
+                if (v) v->start_width = parse_double_compat(gc.value);
                 vertex_widths = true;
                 break;
             case 41:
-                if (v) v->end_width = std::atof(gc.value.c_str());
+                if (v) v->end_width = parse_double_compat(gc.value);
                 vertex_widths = true;
                 break;
-            case 42: if (v) v->bulge = std::atof(gc.value.c_str()); break;
+            case 42: if (v) v->bulge = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2493,6 +2531,7 @@ Entity DxfReader::parse_lwpolyline() {
         for (auto& v : d.vertices) v.start_width = v.end_width = constant_width;
     }
 
+    fit_capacity(d.vertices);
     entity.data = std::move(d);
     return entity;
 }
@@ -2510,15 +2549,15 @@ Entity DxfReader::parse_ellipse() {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: d.center.x = std::atof(gc.value.c_str()); break;
-            case 20: d.center.y = std::atof(gc.value.c_str()); break;
-            case 30: d.center.z = std::atof(gc.value.c_str()); break;
-            case 11: d.major_axis.x = std::atof(gc.value.c_str()); break;
-            case 21: d.major_axis.y = std::atof(gc.value.c_str()); break;
-            case 31: d.major_axis.z = std::atof(gc.value.c_str()); break;
-            case 40: d.ratio = std::atof(gc.value.c_str()); break;
-            case 41: d.start_param = std::atof(gc.value.c_str()); break;
-            case 42: d.end_param = std::atof(gc.value.c_str()); break;
+            case 10: d.center.x = parse_double_compat(gc.value); break;
+            case 20: d.center.y = parse_double_compat(gc.value); break;
+            case 30: d.center.z = parse_double_compat(gc.value); break;
+            case 11: d.major_axis.x = parse_double_compat(gc.value); break;
+            case 21: d.major_axis.y = parse_double_compat(gc.value); break;
+            case 31: d.major_axis.z = parse_double_compat(gc.value); break;
+            case 40: d.ratio = parse_double_compat(gc.value); break;
+            case 41: d.start_param = parse_double_compat(gc.value); break;
+            case 42: d.end_param = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2526,7 +2565,7 @@ Entity DxfReader::parse_ellipse() {
         }
     }
 
-    entity.data = d;
+    entity.data = std::move(d);
     return entity;
 }
 
@@ -2544,12 +2583,12 @@ Entity DxfReader::parse_xline(bool ray) {
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
-            case 10: base.x = std::atof(gc.value.c_str()); break;
-            case 20: base.y = std::atof(gc.value.c_str()); break;
-            case 30: base.z = std::atof(gc.value.c_str()); break;
-            case 11: direction.x = std::atof(gc.value.c_str()); break;
-            case 21: direction.y = std::atof(gc.value.c_str()); break;
-            case 31: direction.z = std::atof(gc.value.c_str()); break;
+            case 10: base.x = parse_double_compat(gc.value); break;
+            case 20: base.y = parse_double_compat(gc.value); break;
+            case 30: base.z = parse_double_compat(gc.value); break;
+            case 11: direction.x = parse_double_compat(gc.value); break;
+            case 21: direction.y = parse_double_compat(gc.value); break;
+            case 31: direction.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2642,9 +2681,9 @@ bool DxfReader::multiline_group(OptionalBoxed<MultilineAttribute>& ml, Multiline
         case 71: ml->type = std::atoi(gc.value.c_str()); break;
         case 72: break;                                         // the number of 340
         case 340: ml->secondary.push_back(gc.value); break;
-        case 11: ml->alignment_point.x = std::atof(gc.value.c_str()); ml->has_alignment_point = true; break;
-        case 21: ml->alignment_point.y = std::atof(gc.value.c_str()); break;
-        case 31: ml->alignment_point.z = std::atof(gc.value.c_str()); break;
+        case 11: ml->alignment_point.x = parse_double_compat(gc.value); ml->has_alignment_point = true; break;
+        case 21: ml->alignment_point.y = parse_double_compat(gc.value); break;
+        case 31: ml->alignment_point.z = parse_double_compat(gc.value); break;
     }
     return true;
 }
@@ -2669,13 +2708,13 @@ Entity DxfReader::parse_tolerance() {
         if (gc.code == 0) { push_back(gc); break; }
         switch (gc.code) {
             case 3:  d.dim_style = gc.value; break;
-            case 10: d.insertion_point.x = std::atof(gc.value.c_str()); break;
-            case 20: d.insertion_point.y = std::atof(gc.value.c_str()); break;
-            case 30: d.insertion_point.z = std::atof(gc.value.c_str()); break;
+            case 10: d.insertion_point.x = parse_double_compat(gc.value); break;
+            case 20: d.insertion_point.y = parse_double_compat(gc.value); break;
+            case 30: d.insertion_point.z = parse_double_compat(gc.value); break;
             case 1:  d.content = gc.value; break;
-            case 11: d.x_axis_direction.x = std::atof(gc.value.c_str()); break;
-            case 21: d.x_axis_direction.y = std::atof(gc.value.c_str()); break;
-            case 31: d.x_axis_direction.z = std::atof(gc.value.c_str()); break;
+            case 11: d.x_axis_direction.x = parse_double_compat(gc.value); break;
+            case 21: d.x_axis_direction.y = parse_double_compat(gc.value); break;
+            case 31: d.x_axis_direction.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2708,28 +2747,28 @@ Entity DxfReader::parse_leader() {
             case 73: d.annotation_type = std::atoi(gc.value.c_str()); break;
             case 74: d.hookline_direction = std::atoi(gc.value.c_str()); break;
             case 75: d.hookline = std::atoi(gc.value.c_str()) != 0; break;
-            case 40: d.text_height = std::atof(gc.value.c_str()); break;
-            case 41: d.text_width = std::atof(gc.value.c_str()); break;
+            case 40: d.text_height = parse_double_compat(gc.value); break;
+            case 41: d.text_width = parse_double_compat(gc.value); break;
             case 76: break;
             case 10:
                 d.vertices.emplace_back();
-                d.vertices.back().x = std::atof(gc.value.c_str());
+                d.vertices.back().x = parse_double_compat(gc.value);
                 break;
-            case 20: if (v) v->y = std::atof(gc.value.c_str()); break;
-            case 30: if (v) v->z = std::atof(gc.value.c_str()); break;
+            case 20: if (v) v->y = parse_double_compat(gc.value); break;
+            case 30: if (v) v->z = parse_double_compat(gc.value); break;
             case 77: d.byblock_color = std::atoi(gc.value.c_str()); break;
             case 340: d.annotation_handle = gc.value; break;
-            case 211: d.horizontal_direction.x = std::atof(gc.value.c_str()); break;
-            case 221: d.horizontal_direction.y = std::atof(gc.value.c_str()); break;
-            case 231: d.horizontal_direction.z = std::atof(gc.value.c_str()); break;
+            case 211: d.horizontal_direction.x = parse_double_compat(gc.value); break;
+            case 221: d.horizontal_direction.y = parse_double_compat(gc.value); break;
+            case 231: d.horizontal_direction.z = parse_double_compat(gc.value); break;
             // R13 has one offset, 212: the annotation's (R13:LEADER); R14 and later have 212 for the block's
             // and 213 for the annotation's (plan phase 7, format profile 7.4)
-            case 212: (version_ == DxfVersion::R13 ? d.annotation_offset : d.block_offset).x = std::atof(gc.value.c_str()); break;
-            case 222: (version_ == DxfVersion::R13 ? d.annotation_offset : d.block_offset).y = std::atof(gc.value.c_str()); break;
-            case 232: (version_ == DxfVersion::R13 ? d.annotation_offset : d.block_offset).z = std::atof(gc.value.c_str()); break;
-            case 213: d.annotation_offset.x = std::atof(gc.value.c_str()); break;
-            case 223: d.annotation_offset.y = std::atof(gc.value.c_str()); break;
-            case 233: d.annotation_offset.z = std::atof(gc.value.c_str()); break;
+            case 212: (version_ == DxfVersion::R13 ? d.annotation_offset : d.block_offset).x = parse_double_compat(gc.value); break;
+            case 222: (version_ == DxfVersion::R13 ? d.annotation_offset : d.block_offset).y = parse_double_compat(gc.value); break;
+            case 232: (version_ == DxfVersion::R13 ? d.annotation_offset : d.block_offset).z = parse_double_compat(gc.value); break;
+            case 213: d.annotation_offset.x = parse_double_compat(gc.value); break;
+            case 223: d.annotation_offset.y = parse_double_compat(gc.value); break;
+            case 233: d.annotation_offset.z = parse_double_compat(gc.value); break;
             default:
                 if (gc.code >= 1000) { parse_xdata(entity, gc); }
                 else { parse_common_entity_codes(entity, gc); }
@@ -2748,7 +2787,7 @@ Entity DxfReader::parse_leader() {
 // 40 and 41 are lists (knots, weights); 10 starts a control point and 11 a fit point.
 // The counts (72–74) follow from the lists.
 bool DxfReader::spline_group(SplineData& d, const GroupCode& gc) {
-    double v = std::atof(gc.value.c_str());
+    double v = parse_double_compat(gc.value);
     switch (gc.code) {
         case 70: d.flags = std::atoi(gc.value.c_str()); return true;
         case 71: d.degree = std::atoi(gc.value.c_str()); return true;
@@ -2815,7 +2854,7 @@ Entity DxfReader::parse_mesh() {
     size_t i = 0;
     auto code = [&]() { return i < g.size() ? g[i].code : -1; };
     auto integer = [&]() { return std::atoi(g[i++].value.c_str()); };
-    auto num = [&]() { return std::atof(g[i++].value.c_str()); };
+    auto num = [&]() { return parse_double_compat(g[i++].value); };
     if (code() == 71) d.version = integer();
     if (code() == 72) d.blend_crease = integer() != 0;
     if (code() == 91) d.level = integer();
@@ -2903,7 +2942,7 @@ Entity DxfReader::parse_helix() {
         if (gc.code >= 1000) { parse_xdata(entity, gc); continue; }
         if (subclass_ == "AcDbSpline" && spline_group(d.spline, gc)) continue;
         if (subclass_ == "AcDbHelix") {
-            double v = std::atof(gc.value.c_str());
+            double v = parse_double_compat(gc.value);
             int n = std::atoi(gc.value.c_str());
             switch (gc.code) {
                 case 90: d.major_version = n; continue;
@@ -2971,7 +3010,7 @@ Entity DxfReader::parse_surface(EntityType type) {
 
     size_t i = 0;
     auto code = [&]() { return i < body.size() ? body[i].code : -1; };
-    auto num = [&]() { return std::atof(body[i++].value.c_str()); };
+    auto num = [&]() { return parse_double_compat(body[i++].value); };
     auto integer = [&]() { return std::atoi(body[i++].value.c_str()); };
     auto flag = [&]() { return std::atoi(body[i++].value.c_str()) != 0; };
     auto point = [&](int x_code) {
@@ -3110,7 +3149,7 @@ Entity DxfReader::parse_hatch() {
 
     size_t i = 0;
     auto code = [&]() { return i < g.size() ? g[i].code : -1; };
-    auto num = [&]() { return std::atof(g[i++].value.c_str()); };
+    auto num = [&]() { return parse_double_compat(g[i++].value); };
     auto integer = [&]() { return std::atoi(g[i++].value.c_str()); };
     auto point = [&](int x_code) {
         Point2 p;
@@ -3277,7 +3316,7 @@ Entity DxfReader::parse_mline() {
     GroupCode gc;
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
-        double v = std::atof(gc.value.c_str());
+        double v = parse_double_compat(gc.value);
         MlineVertex* vx = d.vertices.empty() ? nullptr : &d.vertices.back();
         MlineElementParams* el = vx && !vx->elements.empty() ? &vx->elements.back() : nullptr;
         switch (gc.code) {
@@ -3328,7 +3367,7 @@ Entity DxfReader::parse_image() {
     GroupCode gc;
     while (read_group(gc)) {
         if (gc.code == 0) { push_back(gc); break; }
-        double v = std::atof(gc.value.c_str());
+        double v = parse_double_compat(gc.value);
         int n = std::atoi(gc.value.c_str());
         switch (gc.code) {
             case 90:  d.class_version = n; break;
@@ -3475,7 +3514,8 @@ Entity DxfReader::parse_unknown(const std::string& entity_type) {
         d.group_codes.push_back({gc.code, gc.value});
     }
 
-    entity.data = d;
+    fit_capacity(d.group_codes);
+    entity.data = std::move(d);
     return entity;
 }
 

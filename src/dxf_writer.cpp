@@ -6,6 +6,7 @@
 #include "dimension_block.hpp"
 #include "text_layout.hpp"
 #include <set>
+#include <sstream>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -114,7 +115,13 @@ int DxfWriter::header_code_page(const Drawing& dwg, int fallback) {
 }
 
 bool DxfWriter::write(const Drawing& dwg) {
-    if (version_ != DxfVersion::R12) return write_r2000(dwg);
+    const bool ok = version_ != DxfVersion::R12 ? write_r2000(dwg) : write_r12(dwg);
+    // 16-bit values beyond their range were written as AutoCAD writes them: the program is told
+    for (auto& w : groups_.wrapped_value_warnings()) warnings_.push_back(std::move(w));
+    return ok;
+}
+
+bool DxfWriter::write_r12(const Drawing& dwg) {
     drawing_ = &dwg;
 
     // Strings are written in the drawing's code page (default ANSI_1252)
@@ -141,24 +148,39 @@ bool DxfWriter::write(const Drawing& dwg) {
         }
     }
     if (!error_.empty()) return false;
-    compute_extents(dwg);
+    // R12 read from a file: HEADER, TABLES, BLOCKS and ENTITIES from the file's records. Its extents are
+    // calculated at the header, after the body, and only when something changed (decide_header_extents()); the
+    // default *Active view needs them before when the file has no VPORT record
+    const bool deferred_header = header_from_file(dwg);
+    if (deferred_header) {
+        if (dwg.vports().empty()) calculate_extents(dwg);
+    } else {
+        compute_extents(dwg);
+    }
     if (r12_template()) prepare_r12_template(dwg);
 
-    if (format_ == DxfFormat::Binary) {
-        write_sentinel();
-    }
-
-    // R12 read from a file: HEADER, TABLES, BLOCKS and ENTITIES from the file's records
-    bool has_header = false;
-    for (const auto& s : dwg.raw_sections()) has_header = has_header || s.name == "HEADER";
-    if (r12_template() && has_header) {
-        write_header_template(dwg);
+    if (deferred_header) {
+        // The header comes first in the file but is written last, as in write_r2000(): the extents it holds
+        // are decided by what the body changed
+        std::ostringstream body(std::ios::out | std::ios::binary);
+        groups_.set_stream(body);
+        changed_before_body_ = changed_;
         write_tables(dwg);
         write_blocks(dwg.blocks());
         write_entities(dwg.entities());
         write_raw_sections_after_objects(dwg);
         write_eof();
+
+        groups_.set_stream(out_);
+        if (format_ == DxfFormat::Binary) write_sentinel();
+        write_header_template(dwg);
+        const std::string text = std::move(body).str();
+        out_.write(text.data(), static_cast<std::streamsize>(text.size()));
         return out_.good() && groups_.error().empty() && error_.empty();
+    }
+
+    if (format_ == DxfFormat::Binary) {
+        write_sentinel();
     }
 
     // Build header vars with updated extents
@@ -209,28 +231,78 @@ bool DxfWriter::write(const Drawing& dwg) {
     return out_.good() && groups_.error().empty();
 }
 
-// $EXTMIN/$EXTMAX and $PEXTMIN/$PEXTMAX (extents.hpp). Called after the dimension
-// blocks are generated and the changed ones regenerated (9.S, Codex 9): what is written counts.
+namespace {
+
+bool same_extents(const Extents& a, const Extents& b) {
+    if (a.empty() && b.empty()) return true;
+    return a.min.x == b.min.x && a.min.y == b.min.y && a.min.z == b.min.z &&
+           a.max.x == b.max.x && a.max.y == b.max.y && a.max.z == b.max.z;
+}
+
+} // namespace
+
+// A drawing built in memory, or an R12 file read without a HEADER section: the extents are calculated now and the font
+// warnings they gave are the drawing's. A drawing read from a file has them calculated at the header
+// (decide_header_extents()) when it needs them.
 void DxfWriter::compute_extents(const Drawing& dwg) {
-    Extents model, paper;
-    std::vector<std::string> font_warnings;
-    drawing_extents(dwg, generated_dim_blocks_, dim_block_names_, model, paper, font_warnings, &regenerated_blocks_);
+    calculate_extents(dwg);
     if (r12_template()) {
-        // Read from a file: the extents of the drawing as read are the file's (plan F9, F19). Only a
-        // space whose geometry has changed gets new ones (write_header_template).
+        // Read from a file: the extents of the drawing as read are the file's. Only a space whose geometry has changed
+        // gets new ones.
         Extents model_was, paper_was;
         std::vector<std::string> ignored;
         drawing_extents(*original_, {}, {}, model_was, paper_was, ignored);
-        auto same = [](const Extents& a, const Extents& b) {
-            if (a.empty() && b.empty()) return true;
-            return a.min.x == b.min.x && a.min.y == b.min.y && a.min.z == b.min.z &&
-                   a.max.x == b.max.x && a.max.y == b.max.y && a.max.z == b.max.z;
-        };
-        model_extents_changed_ = !same(model, model_was);
-        paper_extents_changed_ = !same(paper, paper_was);
-        if (!model_extents_changed_ && !paper_extents_changed_) font_warnings.clear();
+        model_extents_changed_ = !same_extents(model_now_, model_was);
+        paper_extents_changed_ = !same_extents(paper_now_, paper_was);
+        if (!model_extents_changed_ && !paper_extents_changed_) extents_warnings_.clear();
     }
-    for (auto& w : font_warnings) warnings_.push_back(std::move(w));
+    for (auto& w : extents_warnings_) warnings_.push_back(std::move(w));
+    extents_warnings_.clear();
+}
+
+bool DxfWriter::header_from_file(const Drawing& dwg) const {
+    if (!template_mode()) return false;
+    for (const auto& s : dwg.raw_sections()) {
+        if (s.name == "HEADER") return true;
+    }
+    return false;
+}
+
+// The header of a drawing read from a file keeps the file's $EXTMIN/$EXTMAX and $PEXTMIN/$PEXTMAX while nothing has changed
+// (nothing is calculated, and no font is looked for). When something has: a space with an entity removed since gets the
+// extents of the drawing as it is, and any other the extents of the drawing now when they differ from those of the drawing
+// as read (a drawing made from the preserved records alone, which lack a removed entity).
+void DxfWriter::decide_header_extents(const Drawing& dwg) {
+    model_extents_changed_ = false;
+    paper_extents_changed_ = false;
+    if (!changed_ && !model_space_removed_ && !paper_space_removed_) {
+        extents_warnings_.clear();
+        return;
+    }
+    if (!extents_calculated_) calculate_extents(dwg);
+    model_extents_changed_ = model_space_removed_;
+    paper_extents_changed_ = paper_space_removed_;
+    if (!model_extents_changed_ || !paper_extents_changed_) {
+        Extents model_was, paper_was;
+        std::vector<std::string> ignored;
+        drawing_extents(*original_, {}, {}, model_was, paper_was, ignored);
+        if (!model_extents_changed_) model_extents_changed_ = !same_extents(model_now_, model_was);
+        if (!paper_extents_changed_) paper_extents_changed_ = !same_extents(paper_now_, paper_was);
+    }
+    if (!model_extents_changed_ && !paper_extents_changed_) extents_warnings_.clear();
+    for (auto& w : extents_warnings_) warnings_.push_back(std::move(w));
+    extents_warnings_.clear();
+}
+
+// $EXTMIN/$EXTMAX and $PEXTMIN/$PEXTMAX (extents.hpp), and the view of the default *Active viewport. Called after the
+// dimension blocks are generated and the changed ones regenerated: what is written counts.
+void DxfWriter::calculate_extents(const Drawing& dwg) {
+    extents_calculated_ = true;
+    extents_warnings_.clear();
+    Extents model, paper;
+    drawing_extents(dwg, generated_dim_blocks_, dim_block_names_, model, paper, extents_warnings_, &regenerated_blocks_);
+    model_now_ = model;
+    paper_now_ = paper;
     ext_min_ = model.min;
     ext_max_ = model.max;
     pext_min_ = paper.min;
@@ -1562,6 +1634,8 @@ void DxfWriter::write_insert_seqend(const Entity& entity) {
     if (!d.seqend_handle.empty()) write_code(5, d.seqend_handle);
     if (entity.props.paper_space != 0) write_code_int(67, entity.props.paper_space);
     write_code(8, entity.props.layer);
+    // The INSERT's SEQEND has its layer and color, not its linetype (AutoCAD's own files)
+    if (!entity.props.color.is_by_layer()) write_code_int(62, entity.props.color.aci);
 }
 
 // ---------------------------------------------------------------------------

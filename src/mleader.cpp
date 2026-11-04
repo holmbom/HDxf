@@ -1,4 +1,5 @@
 #include "mleader.hpp"
+#include "number_parse.hpp"
 #include <cstdlib>
 
 // MULTILEADER and MLEADERSTYLE read from their groups (plan phase 3, B36/B37), in the order
@@ -14,7 +15,7 @@ namespace internal {
 namespace {
 
 int to_int(const std::string& s) { return std::atoi(s.c_str()); }
-double to_double(const std::string& s) { return std::atof(s.c_str()); }
+double to_double(const std::string& s) { return parse_double_compat(s); }
 
 // One coordinate of a point: 10-39 and 110-139 by the code's last digit's group (x 10s, y
 // 20s, z 30s)

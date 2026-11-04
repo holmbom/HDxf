@@ -2,6 +2,7 @@
 #include "handles.hpp"
 #include "roundtrip.hpp"
 #include "mtext_data.hpp"
+#include "number_parse.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -248,11 +249,11 @@ static bool multiline_from_xrecord(const XRecordData& x, MultilineAttribute& ml)
     }
     ml.alignment_point = {};
     if (i + 2 < g.size() && g[i].code == 10 && g[i + 1].code == 20 && g[i + 2].code == 30) {
-        ml.alignment_point = {std::atof(g[i].value.c_str()), std::atof(g[i + 1].value.c_str()), std::atof(g[i + 2].value.c_str())};
+        ml.alignment_point = {internal::parse_double_compat(g[i].value), internal::parse_double_compat(g[i + 1].value), internal::parse_double_compat(g[i + 2].value)};
         i += 3;
     }
     if (i >= g.size() || g[i].code != 40) return false;
-    ml.annotation_scale = std::atof(g[i++].value.c_str());
+    ml.annotation_scale = internal::parse_double_compat(g[i++].value);
     if (i >= g.size() || g[i].code != 2) return false;
     ml.tag = g[i++].value;
     if (i >= g.size() || g[i].code != 1 || g[i].value != "Embedded Object") return false;

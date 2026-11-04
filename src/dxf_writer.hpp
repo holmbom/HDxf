@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hdxf.hpp"
+#include "extents.hpp"
 #include "group_io.hpp"
 #include "mleader_graphics.hpp"
 #include "proxy_graphics.hpp"
@@ -125,6 +126,15 @@ public:
     // The objects a typed object owned by a hard pointer as read (Drawing::loaded_hard_owned_)
     void set_loaded_hard_owned(const std::vector<std::pair<uint64_t, uint64_t>>* owned) { loaded_hard_owned_ = owned; }
 
+    // A drawing read from a file: whether entities that had a preserved record were removed from the model space, the
+    // paper space or a block since (Drawing counts them: fewer now than when the file was read, whatever was added; a
+    // block counts for both spaces). The header's extents of such a space are then the drawing's own, without a comparison
+    // with the drawing as read, which lacks the removed entity too
+    void set_removed_entities(bool model_space, bool paper_space) {
+        model_space_removed_ = model_space;
+        paper_space_removed_ = paper_space;
+    }
+
     // R12 read from a file (set_template() without handles): how many records each table had
     // when it was read, for TABLE's 70
     void set_loaded_table_sizes(const std::vector<std::pair<std::string, size_t>>* sizes) {
@@ -148,6 +158,7 @@ private:
 
     void write_sentinel();
 
+    // A drawing built in memory, or one with no HEADER of its own: the extents and the font warnings they gave
     void compute_extents(const Drawing& dwg);
 
     void write_header(const std::vector<HeaderVar>& header_vars);
@@ -213,6 +224,9 @@ private:
                                        Block& block);
     void generate_ordinate_dim_geometry(const DimensionData& dim, const DimStyle& style,
                                         Block& block);
+
+    // R12 (dxf_writer.cpp); a drawing read from a file writes its body before its header, as write_r2000() does
+    bool write_r12(const Drawing& dwg);
 
     // ----- DXF 2000 (dxf_writer_2000.cpp) -----
     bool write_r2000(const Drawing& dwg);
@@ -412,6 +426,22 @@ private:
     Point3 view_min_;       // what the default *Active view shows
     Point3 view_max_;
 
+    // The extents of the drawing (extents.hpp) into ext_*, pext_* and view_*, and the font warnings they gave (held in
+    // extents_warnings_ for a drawing read from a file, whose header may not need them)
+    void calculate_extents(const Drawing& dwg);
+    // A drawing read from a file: whether the HEADER section is written from the file's (write_header_template())
+    bool header_from_file(const Drawing& dwg) const;
+    // At the header of a drawing read from a file: calculates the extents when something changed, and tells which
+    // space's differ from the file's
+    void decide_header_extents(const Drawing& dwg);
+    Extents model_now_;                 // the extents calculated, before the empty-space rules of compute
+    Extents paper_now_;
+    std::vector<std::string> extents_warnings_;
+    bool extents_calculated_ = false;
+    bool model_space_removed_ = false;
+    bool paper_space_removed_ = false;
+    bool changed_before_body_ = false;  // changed_ when the body of an R12 file is begun, as its header was written before it
+
     // Dimension block name mapping: entity pointer -> generated block name
     std::unordered_map<const Entity*, std::string> dim_block_names_;
     std::unordered_map<const Entity*, BuiltDimension> built_dimensions_;
@@ -449,6 +479,20 @@ private:
     const std::vector<std::pair<uint64_t, uint64_t>>* loaded_hard_owned_ = nullptr;
     bool source_binary_ = false;
     bool changed_ = false;          // the output differs from the file read ($VERSIONGUID)
+    // Set once the relations are prepared: every handle the file had is still written, so a record that is the same as read has
+    // no pointer to a record that is gone (the fast path of emit())
+    bool nothing_removed_ = false;
+    // The fast path of emit() and emit_r12(): a record whose groups are the same as the original's is written from its preserved
+    // record when merge_record() would write that unchanged, group for group. `now_has_embedded`: the record now has a 101
+    bool written_as_read(const std::vector<DxfGroup>& preserved, bool now_has_embedded) const;
+    // The same for every record of an emit(): true (and written) only when each record of `now` has its preserved record by
+    // handle, with none left over
+    bool write_unchanged_records(const std::vector<std::vector<DxfGroup>>& preserved,
+                                 const std::unordered_map<uint64_t, size_t>& by_handle,
+                                 const std::vector<CapturedGroup>& now);
+    // Whether is_live() accepts every pointer: nothing was removed and no handle lies between the file's and the next free one
+    bool pointers_known_live() const;
+    mutable std::unordered_map<std::string, bool> descriptor_codes_plain_;   // record type -> its descriptors are pointer codes only
     bool filter_live_ = true;       // writing the drawing now (not the original)
     std::vector<std::string> warnings_;
     int dangling_ = 0;              // pointers kept to records that are gone (B19)

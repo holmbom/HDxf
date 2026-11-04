@@ -1,6 +1,7 @@
 #include "group_io.hpp"
 #include "text_encoding.hpp"
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -15,17 +16,35 @@ static const char binary_sentinel[] = "AutoCAD Binary DXF\r\n\x1a";   // + '\0' 
 // Binary helpers
 // ---------------------------------------------------------------------------
 
+// Reads exactly n bytes; a stream that is not good, or that ends first, is left failed (and at its end)
+static void read_raw(std::istream& in, char* to, std::streamsize n) {
+    if (!in.good()) return;
+    if (in.rdbuf()->sgetn(to, n) != n) in.setstate(std::ios::eofbit | std::ios::failbit);
+}
+
+// One byte; false when the stream is not good or has no more
+static bool read_byte(std::istream& in, char& c) {
+    if (!in.good()) return false;
+    const int value = in.rdbuf()->sbumpc();
+    if (value == std::char_traits<char>::eof()) {
+        in.setstate(std::ios::eofbit | std::ios::failbit);
+        return false;
+    }
+    c = static_cast<char>(value);
+    return true;
+}
+
 static int16_t read_int16_le(std::istream& in) {
-    char buf[2];
-    in.read(buf, 2);
+    char buf[2] = {0, 0};
+    read_raw(in, buf, 2);
     uint16_t u = static_cast<uint8_t>(buf[0]) |
                  (static_cast<uint8_t>(buf[1]) << 8);
     return static_cast<int16_t>(u);
 }
 
 static int32_t read_int32_le(std::istream& in) {
-    char buf[4];
-    in.read(buf, 4);
+    char buf[4] = {0, 0, 0, 0};
+    read_raw(in, buf, 4);
     uint32_t u = static_cast<uint8_t>(buf[0]) |
                  (static_cast<uint8_t>(buf[1]) << 8) |
                  (static_cast<uint8_t>(buf[2]) << 16) |
@@ -34,8 +53,8 @@ static int32_t read_int32_le(std::istream& in) {
 }
 
 static double read_double_le(std::istream& in) {
-    char buf[8];
-    in.read(buf, 8);
+    char buf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    read_raw(in, buf, 8);
     double v;
     std::memcpy(&v, buf, 8);
     return v;
@@ -43,10 +62,9 @@ static double read_double_le(std::istream& in) {
 
 static std::string read_null_terminated(std::istream& in) {
     std::string result;
-    char c;
-    while (in.get(c) && c != '\0') {
-        result += c;
-    }
+    std::getline(in, result, '\0');
+    // A string that ends with the input instead of its terminator leaves the stream failed
+    if (in.eof()) in.setstate(std::ios::failbit);
     return result;
 }
 
@@ -72,6 +90,28 @@ static void write_double_le(std::ostream& out, double v) {
     char buf[8];
     std::memcpy(buf, &v, 8);
     out.write(buf, 8);
+}
+
+// A double as "%.17g" prints it: 17 significant digits, the shorter of fixed and exponent form
+static void format_general17(double d, char* buf, size_t size) {
+#if defined(__cpp_lib_to_chars)
+    const std::to_chars_result result = std::to_chars(buf, buf + size - 1, d, std::chars_format::general, 17);
+    if (result.ec == std::errc()) {
+        *result.ptr = '\0';
+        return;
+    }
+#endif
+    std::snprintf(buf, size, "%.17g", d);
+}
+
+// A group code line: the code right-aligned in `width` columns (wider when it needs more), then the line end
+static void write_code_line(std::ostream& out, int code, int width) {
+    char buf[24];
+    char* end = std::to_chars(buf, buf + sizeof(buf) - 1, code).ptr;
+    const int digits = static_cast<int>(end - buf);
+    *end++ = '\n';
+    for (int k = digits; k < width; ++k) out.put(' ');
+    out.write(buf, end - buf);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,14 +183,18 @@ bool GroupReader::read_ascii(GroupCode& gc) {
         return false;
     }
     gc.code = static_cast<int>(code);
-    gc.value = value_line;
+    gc.value = std::move(value_line);
     // The width of the code line where it is not three columns, when it is the code right-aligned in it
     gc.code_columns = 0;
-    if (untrimmed_front.size() <= 7) {
-        char aligned[16];
-        std::snprintf(aligned, sizeof(aligned), "%*ld", static_cast<int>(untrimmed_front.size()), code);
-        if (untrimmed_front == aligned && untrimmed_front.size() != 3) {
-            gc.code_columns = static_cast<int>(untrimmed_front.size());
+    if (untrimmed_front.size() <= 7 && untrimmed_front.size() != 3) {
+        char digits[24];
+        const size_t length = static_cast<size_t>(std::to_chars(digits, digits + sizeof(digits), code).ptr - digits);
+        if (length <= untrimmed_front.size()) {
+            const size_t padding = untrimmed_front.size() - length;
+            if (untrimmed_front.find_first_not_of(' ') >= padding &&
+                untrimmed_front.compare(padding, length, digits, length) == 0) {
+                gc.code_columns = static_cast<int>(untrimmed_front.size());
+            }
         }
     }
 
@@ -162,8 +206,8 @@ bool GroupReader::read_binary(GroupCode& gc) {
         gc.code = static_cast<uint16_t>(read_int16_le(in_));
         if (!in_.good()) return false;
     } else {
-        char first_byte;
-        if (!in_.get(first_byte)) return false;
+        char first_byte = 0;
+        if (!read_byte(in_, first_byte)) return false;
         uint8_t fb = static_cast<uint8_t>(first_byte);
         if (fb == 255) {
             gc.code = static_cast<uint16_t>(read_int16_le(in_));
@@ -188,7 +232,7 @@ bool GroupReader::read_binary(GroupCode& gc) {
                 std::memcpy(&bits, &d, 8);
                 std::snprintf(buf, sizeof(buf), "nan(0x%016llX)", static_cast<unsigned long long>(bits));
             } else {
-                std::snprintf(buf, sizeof(buf), "%.17g", d);
+                format_general17(d, buf, sizeof(buf));
             }
             gc.value = buf;
             break;
@@ -206,8 +250,8 @@ bool GroupReader::read_binary(GroupCode& gc) {
             break;
         }
         case GroupValueType::Int64: {
-            char buf[8];
-            in_.read(buf, 8);
+            char buf[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+            read_raw(in_, buf, 8);
             if (!in_.good()) return false;
             int64_t v;
             std::memcpy(&v, buf, 8);
@@ -215,26 +259,27 @@ bool GroupReader::read_binary(GroupCode& gc) {
             break;
         }
         case GroupValueType::Bool: {
-            char b;
-            in_.get(b);
-            if (!in_.good()) return false;
+            char b = 0;
+            if (!read_byte(in_, b)) return false;
             // The byte as it is: a group that is a flag by its code can hold a number (SUNSTUDY's hours, group 290)
             gc.value = std::to_string(static_cast<unsigned>(static_cast<unsigned char>(b)));
             break;
         }
         case GroupValueType::BinaryChunk: {
             // Length byte + raw data, held as hex text like in ASCII DXF
-            char len_byte;
-            if (!in_.get(len_byte)) return false;
+            char len_byte = 0;
+            if (!read_byte(in_, len_byte)) return false;
             uint8_t len = static_cast<uint8_t>(len_byte);
             std::string raw(len, '\0');
-            if (len > 0) in_.read(&raw[0], len);
+            if (len > 0) read_raw(in_, &raw[0], len);
+            if (!in_.good()) return false;      // a chunk cut short is not a group
+            static const char hex_digits[] = "0123456789ABCDEF";
             gc.value.clear();
             gc.value.reserve(len * 2);
             for (uint8_t j = 0; j < len; ++j) {
-                char hex[3];
-                std::snprintf(hex, sizeof(hex), "%02X", static_cast<uint8_t>(raw[j]));
-                gc.value += hex;
+                const uint8_t byte = static_cast<uint8_t>(raw[j]);
+                gc.value += hex_digits[byte >> 4];
+                gc.value += hex_digits[byte & 15];
             }
             break;
         }
@@ -298,9 +343,9 @@ void GroupWriter::write_string(int code, const std::string& value) {
         write_code_binary(code);
         out_->write(text.c_str(), text.size() + 1); // null-terminated
     } else {
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "%*d", plain_ ? 1 : 3, code);
-        *out_ << buf << "\n" << text << "\n";
+        write_code_line(*out_, code, plain_ ? 1 : 3);
+        out_->write(text.data(), static_cast<std::streamsize>(text.size()));
+        out_->put('\n');
     }
 }
 
@@ -315,9 +360,56 @@ static CapturedGroup captured_int(int code, int64_t value) {
 // ASCII integers are right-aligned as AutoCAD writes them (R12 and 2000-2018 alike): 16-
 // and 8-bit values and booleans in 6 characters, 32-bit in 9, 64-bit in 18
 std::string GroupWriter::aligned(long long value, int width) const {
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%*lld", plain_ ? 1 : width, value);
-    return buf;
+    char digits[24];
+    const size_t length = static_cast<size_t>(std::to_chars(digits, digits + sizeof(digits), value).ptr - digits);
+    const size_t columns = plain_ ? 1 : static_cast<size_t>(width);
+    std::string out;
+    out.reserve(std::max(length, columns));
+    if (columns > length) out.append(columns - length, ' ');
+    out.append(digits, length);
+    return out;
+}
+
+// The one place a 16-bit group is written. A value beyond -32768 ... 32767 is cut to its low 16 bits as a signed number, as
+// AutoCAD writes it, in ASCII and in binary
+void GroupWriter::put_int16(int code, long long value, bool report) {
+    const int16_t cut = static_cast<int16_t>(static_cast<uint16_t>(static_cast<unsigned long long>(value) & 0xFFFFull));
+    if (report && cut != value) note_wrapped(code, value, cut);
+    if (format_ == DxfFormat::Binary) {
+        write_code_binary(code);
+        write_int16_le(*out_, cut);
+    } else {
+        write_string(code, aligned(cut, 6));
+    }
+}
+
+void GroupWriter::note_wrapped(int code, long long value, int16_t cut) {
+    const std::string record = record_.empty() ? "DXF" : record_;
+    for (WrappedGroup& w : wrapped_) {
+        if (w.code == code && w.record == record) {
+            ++w.count;
+            return;
+        }
+    }
+    WrappedGroup w;
+    w.record = record;
+    w.code = code;
+    w.count = 1;
+    w.first_value = value;
+    w.first_cut = cut;
+    wrapped_.push_back(std::move(w));
+}
+
+std::vector<std::string> GroupWriter::wrapped_value_warnings() const {
+    std::vector<std::string> out;
+    for (const WrappedGroup& w : wrapped_) {
+        std::string line = w.record + " group " + std::to_string(w.code) + ": " + std::to_string(w.count);
+        line += w.count == 1 ? " value beyond 16 bits was written as AutoCAD writes it, cut to 16 bits"
+                             : " values beyond 16 bits were written as AutoCAD writes them, cut to 16 bits";
+        line += " (the first: " + std::to_string(w.first_value) + " as " + std::to_string(w.first_cut) + ")";
+        out.push_back(std::move(line));
+    }
+    return out;
 }
 
 void GroupWriter::write_int16(int code, int value) {
@@ -325,12 +417,15 @@ void GroupWriter::write_int16(int code, int value) {
         sink_->push_back(captured_int(code, value));
         return;
     }
-    if (format_ == DxfFormat::Binary) {
-        write_code_binary(code);
-        write_int16_le(*out_, static_cast<int16_t>(value));
-    } else {
-        write_string(code, aligned(value, 6));
+    put_int16(code, value, true);
+}
+
+void GroupWriter::write_table_count(int code, int count) {
+    if (sink_) {
+        sink_->push_back(captured_int(code, count));
+        return;
     }
+    put_int16(code, count, false);
 }
 
 void GroupWriter::write_int32(int code, int32_t value) {
@@ -433,7 +528,7 @@ void GroupWriter::write_int(int code, int64_t value) {
             }
             break;
         default:
-            write_int16(code, static_cast<int>(value));
+            put_int16(code, value, true);
             break;
     }
 }
@@ -458,7 +553,13 @@ void GroupWriter::write_typed(int code, const std::string& value) {
     }
     if (format_ != DxfFormat::Binary) {
         switch (group_value_type(code, record_)) {
-            case GroupValueType::Int16:
+            case GroupValueType::Int16: {
+                // Aligned; a number beyond 16 bits stays the text it was
+                const long long number = std::strtoll(value.c_str(), nullptr, 10);
+                if (number < -32768 || number > 32767) write_string(code, value);
+                else write_int(code, number);
+                return;
+            }
             case GroupValueType::Int32:
             case GroupValueType::Int64:
             case GroupValueType::Bool:
@@ -488,7 +589,7 @@ void GroupWriter::write_typed(int code, const std::string& value) {
             }
             break;
         case GroupValueType::Int16:
-            write_int16(code, static_cast<int>(std::strtol(v, nullptr, 10)));
+            put_int16(code, std::strtoll(v, nullptr, 10), true);
             break;
         case GroupValueType::Int32:
             write_int32(code, static_cast<int32_t>(std::strtol(v, nullptr, 10)));
@@ -538,7 +639,9 @@ void GroupWriter::write_captured(const CapturedGroup& g) {
             else write_string(g.code, g.text);
             break;
         case CapturedGroup::Kind::Int:
-            write_int(g.code, g.i);
+            // A TABLE's count is cut without a word (write_table_count()), also when it comes through a capture
+            if (g.code == 70 && record_ == "TABLE") write_table_count(g.code, static_cast<int>(g.i));
+            else write_int(g.code, g.i);
             break;
         case CapturedGroup::Kind::Double:
             write_double(g.code, g.d);
@@ -575,9 +678,9 @@ void GroupWriter::write_raw(int code, const std::string& read_value, bool source
         if (source_binary && type == GroupValueType::Double) {
             line = format_double(std::strtod(value.c_str(), nullptr), number_style_);
         }
-        char buf[16];
-        std::snprintf(buf, sizeof(buf), "%*d", code_columns > 0 ? code_columns : (plain_ ? 1 : 3), code);
-        *out_ << buf << "\n" << line << "\n";
+        write_code_line(*out_, code, code_columns > 0 ? code_columns : (plain_ ? 1 : 3));
+        out_->write(line.data(), static_cast<std::streamsize>(line.size()));
+        out_->put('\n');
         return;
     }
     if (text) {

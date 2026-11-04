@@ -510,6 +510,12 @@ struct TypedExtentsSink {
     std::function<void(const Point3&)> add_wcs;
     const Drawing* drawing = nullptr;
     bool in_block = false;
+    // The box of a block, as an INSERT of it has it, for a codec whose block can hold others of its kind. The calculation under way
+    // measures `insert` on its own stack after the codec has returned, and adds the corners of the box in the WCS through the
+    // transform the entity is under (the box's four corners at its lowest Z, one more at its highest when it has height). When the box
+    // comes out empty it asks the codec again with block_box_empty set, which then falls back on what it has of its own.
+    std::function<void(Entity insert)> defer_insert_box;
+    bool block_box_empty = false;
 };
 
 using ObjectReadFn = bool (*)(const RecordView&, TypedReadContext&, Object&);

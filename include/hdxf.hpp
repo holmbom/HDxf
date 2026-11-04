@@ -1,6 +1,6 @@
 #pragma once
 
-// HDXF - DXF File Library, version 1.9.1
+// HDXF - DXF File Library, version 1.9.2
 // Reads DXF R12 … 2018 (ASCII and binary); writes R12, R13, R14, 2000, 2004, 2007, 2010, 2013 and
 // 2018. Every record of a file is preserved in full (RawRecord): a drawing read from a file is
 // written back from them in its own version, with only what changed written anew.
@@ -84,7 +84,7 @@ enum class DxfFormat { Ascii, Binary };
 struct Version {
     static constexpr int major = 1;
     static constexpr int minor = 9;
-    static constexpr int patch = 1;
+    static constexpr int patch = 2;
     static constexpr const char* suffix = "";
 
     static std::string string() {
@@ -506,6 +506,10 @@ struct Vertex {
     std::vector<std::string> reactors;  // 330 in 102 {ACAD_REACTORS (2000+), as EntityProperties
     // The vertex's own layer, linetype and color (8, 6, 62; plan F15): an empty layer is the
     // polyline's, an empty linetype is none written. 62 = 0 (BYBLOCK) is kept as 0.
+    // The file follows the polyline as AutoCAD's do, and these fields stay as they are: a vertex read from a file is written with
+    // the layer, linetype or color the polyline was given when it had the polyline's value as read and was not changed itself; a
+    // vertex the program made is written with the polyline's linetype when its own is empty and the polyline's color when its own
+    // is ByLayer (a vertex set to ByLayer cannot be told from one never set). The same goes for the SEQEND's seqend_* fields.
     std::string layer;
     std::string linetype;
     Color color;
@@ -521,7 +525,7 @@ struct PolylineData {
     double elevation = 0.0;             // group 30: in the OCS when 2D, the WCS when 3D
     double default_start_width = 0.0;   // group 40
     double default_end_width = 0.0;     // group 41
-    int m_count = 0;                    // group 71
+    int m_count = 0;                    // group 71 (AutoCAD writes a polyface's count above 32767 cut to 16 bits, so a read one can be negative)
     int n_count = 0;                    // group 72
     int smooth_m = 0;                   // group 73
     int smooth_n = 0;                   // group 74
@@ -7950,7 +7954,7 @@ public:
 
     // --- The size of entities, as AutoCAD computes it (text with the fonts in font_paths()) ---
     // An entity's extents in the WCS (AutoCAD's geometric extents): what $EXTMIN/$EXTMAX
-    // are made of. False when it has none (XLINE, RAY, a text of spaces).
+    // are made of. False when it has none (XLINE, RAY, a text of spaces, an invisible entity).
     bool entity_extents(const Entity& e, Point3& min, Point3& max) const;
     // MTEXT's actual width (42, its widest line) and height (43), as AutoCAD 2018 writes
     // them — AutoCAD's 2000 and 2004 files do not, so HDxf does not write them either.
@@ -8330,6 +8334,10 @@ private:
     bool loaded_r12_ = false;
     // How many records each R12 table had when the file was read (table name, count)
     std::vector<std::pair<std::string, size_t>> loaded_table_sizes_;
+    // How many entities had a preserved record when the file was read: fewer now means that some were removed, whatever was added
+    size_t loaded_model_records_ = 0;
+    size_t loaded_paper_records_ = 0;
+    size_t loaded_block_records_ = 0;
     std::vector<Entity> entities_;
     std::vector<Layer> layers_;
     std::vector<Block> blocks_;

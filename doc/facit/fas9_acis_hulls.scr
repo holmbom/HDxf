@@ -1,0 +1,63 @@
+; fas9_acis_hulls.scr - facit of the extents of solids whose surfaces reach beyond their edges, in blocks turned and not. Run it with
+;   python -I tools/fas9_facit_run.py doc/facit/fas9_acis_hulls.scr
+; Files (acad_<version>_dxf_<theme>[_<change>][_bin].dxf):
+;   acis_hulls   a sphere, a torus, a loft from a circle to a point, the same loft cut through its point, in a block; INSERTs at 0, 30 and 90 degrees
+_.DELOBJ
+1
+_.SPHERE
+0,0,0
+10
+_.TORUS
+30,0,0
+10
+2
+_.CIRCLE
+60,0,0
+10
+_.LOFT
+_L
+_PO
+60,0,20
+
+_.CIRCLE
+90,0,0
+10
+_.LOFT
+_L
+_PO
+90,0,20
+
+_.SLICE
+_L
+
+_YZ
+90,0,0
+100,0,0
+_.-BLOCK
+BS
+0,0,0
+_ALL
+
+_.-INSERT
+BS
+0,0,0
+1
+1
+0
+_.-INSERT
+BS
+200,0,0
+1
+1
+30
+_.-INSERT
+BS
+0,300,0
+1
+1
+90
+_.REGEN
+_.ZOOM
+_E
+;SAVE acis_hulls
+;EXPECT INSERT 3DSOLID

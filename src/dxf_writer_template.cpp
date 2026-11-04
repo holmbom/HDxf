@@ -253,6 +253,20 @@ std::string handle_of(const std::vector<DxfGroup>& rec) {
     return {};
 }
 
+// The handle of the record that spans [begin, end) of a capture (0: none)
+uint64_t handle_in_range(const std::vector<CapturedGroup>& g, size_t begin, size_t end) {
+    for (size_t i = begin; i < end; ++i) {
+        if (g[i].code == 5 || g[i].code == 105) return handle_value(g[i].text);
+        if (g[i].code == 100) break;
+    }
+    return 0;
+}
+
+// The 102 blocks merge_record() keeps the pointers of and rewrites: reactors, extension dictionary, block references
+bool known_block(const std::string& opening) {
+    return opening == "{ACAD_REACTORS" || opening == "{ACAD_XDICTIONARY" || opening == "{BLKREFS";
+}
+
 std::vector<std::vector<CapturedGroup>> split(const std::vector<CapturedGroup>& g) {
     std::vector<std::vector<CapturedGroup>> out;
     for (const auto& x : g) {
@@ -674,6 +688,98 @@ void DxfWriter::prepare_template(const Drawing& dwg) {
 // One element
 // ---------------------------------------------------------------------------
 
+bool DxfWriter::pointers_known_live() const {
+    if (live_.empty()) return true;
+    // is_live(): a handle that is not written is gone when the file had it, and when it lies between the file's largest and
+    // the next free one (made since the file was read, and not written)
+    return nothing_removed_ && next_handle_ <= orig_max_ + 1;
+}
+
+// merge_record() with a record whose groups are the same as the original's (N == O) writes every group of the preserved record
+// as it stands (raw_key(), raw()), except:
+//   - a pointer to a record that is gone: 0, or left out of a known 102 block
+//   - a known 102 block that ends up empty: not written (and the 102 blocks it writes, without the code line widths the file had)
+//   - a 101 embedded object N has and the record lacks: written after the record
+// and, for a type with relation descriptors, a handle held under a code that is not a pointer's. This is true when none of
+// those can happen; anything unsure is false, and the record goes through merge_record().
+bool DxfWriter::written_as_read(const std::vector<DxfGroup>& preserved, bool now_has_embedded) const {
+    if (preserved.empty()) return false;
+    const bool check_pointers = !pointers_known_live();
+    if (now_has_embedded) {
+        bool has = false;
+        for (const DxfGroup& g : preserved) {
+            if (g.code == 101) {
+                has = true;
+                break;
+            }
+        }
+        if (!has) return false;
+    }
+    if (check_pointers) {
+        const std::string record_type = trimmed(preserved[0].value);
+        auto plain = descriptor_codes_plain_.find(record_type);
+        if (plain == descriptor_codes_plain_.end()) {
+            bool pointer_codes_only = true;
+            if (const std::vector<RefDescriptor>* refs = TypedRegistry::instance().refs_for(record_type)) {
+                for (const RefDescriptor& d : *refs) {
+                    if (!is_pointer(d.code)) pointer_codes_only = false;
+                }
+            }
+            plain = descriptor_codes_plain_.emplace(record_type, pointer_codes_only).first;
+        }
+        if (!plain->second) return false;
+    }
+    for (size_t i = 0; i < preserved.size(); ++i) {
+        const DxfGroup& g = preserved[i];
+        if (check_pointers && is_pointer(g.code) && !is_live(g.value)) return false;
+        if (g.code != 102 || g.value.empty() || g.value[0] != '{') continue;
+        // The block ends at the next 102 that does not open one (segment())
+        size_t end = i + 1;
+        while (end < preserved.size() &&
+               !(preserved[end].code == 102 && (preserved[end].value.empty() || preserved[end].value[0] != '{'))) {
+            ++end;
+        }
+        if (end >= preserved.size()) return false;
+        if (!known_block(g.value)) continue;
+        if (end == i + 1) return false;
+        for (size_t k = i; k <= end; ++k) {
+            if (preserved[k].code_columns != 0) return false;
+        }
+    }
+    return true;
+}
+
+// Every record of `now` against the preserved records: the same ones, each once, found by handle. Then they are written as
+// they were read.
+bool DxfWriter::write_unchanged_records(const std::vector<std::vector<DxfGroup>>& preserved,
+                                        const std::unordered_map<uint64_t, size_t>& by_handle,
+                                        const std::vector<CapturedGroup>& now) {
+    std::vector<size_t> order;
+    order.reserve(preserved.size());
+    std::vector<bool> taken(preserved.size(), false);
+    size_t begin = 0;
+    while (begin < now.size()) {
+        size_t end = begin + 1;
+        bool embedded = now[begin].code == 101;
+        while (end < now.size() && now[end].code != 0) {
+            embedded = embedded || now[end].code == 101;
+            ++end;
+        }
+        const uint64_t handle = handle_in_range(now, begin, end);
+        auto found = handle == 0 ? by_handle.end() : by_handle.find(handle);
+        if (found == by_handle.end() || taken[found->second] || order.size() >= preserved.size()) return false;
+        if (!written_as_read(preserved[found->second], embedded)) return false;
+        taken[found->second] = true;
+        order.push_back(found->second);
+        begin = end;
+    }
+    if (order.size() != preserved.size()) return false;
+    for (size_t index : order) {
+        for (const DxfGroup& g : preserved[index]) groups_.write_raw(g.code, g.value, source_binary_, g.code_columns);
+    }
+    return true;
+}
+
 void DxfWriter::emit(const std::vector<const RawRecord*>& templates, bool entity,
                      const std::function<void()>& now, const std::function<void()>& orig) {
     bool any_template = false;
@@ -712,6 +818,9 @@ void DxfWriter::emit(const std::vector<const RawRecord*>& templates, bool entity
         t_records.push_back(t->groups());
         t_by_handle[handle_value(handle_of(t_records.back()))] = t_records.size() - 1;
     }
+    // Unchanged (N == O): the preserved records are what merge_record() writes, unless something in them leads nowhere
+    if (orig && n == o && error_.empty() && groups_.error().empty() && write_unchanged_records(t_records, t_by_handle, n)) return;
+
     std::unordered_map<uint64_t, size_t> o_by_handle;
     std::vector<std::vector<CapturedGroup>> o_records = split(o);
     for (size_t i = 0; i < o_records.size(); ++i) o_by_handle[handle_value(handle_of(o_records[i]))] = i;
@@ -1168,7 +1277,7 @@ void DxfWriter::write_raw_record(const RawRecord& record, int added_to_count) {
     for (const auto& x : g) {
         if (!counted && x.code == 70) {
             counted = true;
-            groups_.write_int(70, std::atoi(x.value.c_str()) + added_to_count);
+            groups_.write_table_count(70, std::atoi(x.value.c_str()) + added_to_count);
             continue;
         }
         if (x.code == 102) {
@@ -1210,7 +1319,7 @@ void DxfWriter::write_table_head_template(const RawTable& table, int added) {
     for (const auto& x : out) {
         if (!counted && x.code == 70) {
             counted = true;
-            groups_.write_int(70, std::atoi(x.value.c_str()) + added);
+            groups_.write_table_count(70, std::atoi(x.value.c_str()) + added);
             continue;
         }
         if (x.code == 100) subclass = trimmed(x.value);
@@ -1244,38 +1353,48 @@ void DxfWriter::write_header_template(const Drawing& dwg) {
     xclipframe_as_written(before, version_);
     maintenance_as_written(now, version_);
     maintenance_as_written(before, version_);
+    bool header_differs = false;
     for (const auto& v : now) {
         if (v.name == "$HANDSEED" || v.name == "$VERSIONGUID") continue;
         const HeaderVar* b = find(before, v.name);
-        if (!b || b->values != v.values) changed_ = true;
+        if (!b || b->values != v.values) header_differs = true;
         // A variable that points at a record that is gone ($CMATERIAL, $INTERFEREOBJVS …) is written 0 (B19, step 9.7)
         for (const auto& [code, value] : v.values) {
-            if (is_pointer(code) && !is_live(value)) changed_ = true;
+            if (is_pointer(code) && !is_live(value)) header_differs = true;
         }
     }
-    if (now.size() != before.size()) changed_ = true;
-    if (version_ == DxfVersion::R12) {
-        // R12 (plan F9, F19): the extents as the file has them while the drawing's geometry is as it
-        // was read, new ones (the same calculation as for a new drawing) for the space that has
-        // changed — unless the program set the variable itself
-        auto point = [](const Point3& p) -> std::vector<std::pair<int, std::string>> {
+    if (now.size() != before.size()) header_differs = true;
+    if (header_differs) changed_ = true;
+    // Whether the drawing differs from the file, for $HANDSEED and the variables a save changes. An R12 file's body is written
+    // before its header, and what the body changed does not count there: its $HANDSEED stays the file's while no record was
+    // given a handle
+    const bool changed_now = version_ == DxfVersion::R12 ? (changed_before_body_ || header_differs) : changed_;
+
+    // The extents as the file has them while the drawing's geometry is as it was read, new ones (the same calculation as for a
+    // new drawing) for the space that has changed — unless the program set the variable itself
+    decide_header_extents(dwg);
+    auto point = [&](const Point3& p) -> std::vector<std::pair<int, std::string>> {
+        if (version_ == DxfVersion::R12) {
             char x[64], y[64], z[64];
             std::snprintf(x, sizeof(x), "%.17g", p.x);
             std::snprintf(y, sizeof(y), "%.17g", p.y);
             std::snprintf(z, sizeof(z), "%.17g", p.z);
             return {{10, x}, {20, y}, {30, z}};
-        };
-        auto extents = [&](const char* name, const Point3& p, bool geometry_changed) {
-            HeaderVar* v = find(now, name);
-            const HeaderVar* b = find(before, name);
-            if (!geometry_changed || !v || (b && b->values != v->values)) return;
-            v->values = point(p);
-        };
-        extents("$EXTMIN", ext_min_, model_extents_changed_);
-        extents("$EXTMAX", ext_max_, model_extents_changed_);
-        extents("$PEXTMIN", pext_min_, paper_extents_changed_);
-        extents("$PEXTMAX", pext_max_, paper_extents_changed_);
-    }
+        }
+        return {{10, format_double(p.x, NumberStyle::AutoCad)},
+                {20, format_double(p.y, NumberStyle::AutoCad)},
+                {30, format_double(p.z, NumberStyle::AutoCad)}};
+    };
+    auto extents = [&](const char* name, const Point3& p, bool geometry_changed) {
+        HeaderVar* v = find(now, name);
+        const HeaderVar* b = find(before, name);
+        if (!geometry_changed || !v || (b && b->values != v->values)) return;
+        v->values = point(p);
+    };
+    extents("$EXTMIN", ext_min_, model_extents_changed_);
+    extents("$EXTMAX", ext_max_, model_extents_changed_);
+    extents("$PEXTMIN", pext_min_, paper_extents_changed_);
+    extents("$PEXTMAX", pext_max_, paper_extents_changed_);
     // An R12 file read without $HANDSEED has records without handles (5): written without it too, as
     // AutoCAD discards a drawing with $HANDSEED whose records have none
     if (version_ == DxfVersion::R12 && !find(before, "$HANDSEED")) {
@@ -1285,13 +1404,13 @@ void DxfWriter::write_header_template(const Drawing& dwg) {
         // Above every handle in use; an unchanged file (no record new, none given a handle) keeps the
         // $HANDSEED it has, also when that is below a handle some writer left in it (B12)
         const HeaderVar* seed_before = find(before, "$HANDSEED");
-        if (!changed_ && handles_given_ == 0 && next_handle_ == first_handle_ && seed_before) {
+        if (!changed_now && handles_given_ == 0 && next_handle_ == first_handle_ && seed_before) {
             seed->values = seed_before->values;
         } else {
             seed->values = {{5, format_handle(next_handle_)}};
         }
     }
-    if (changed_) {
+    if (changed_now) {
         if (HeaderVar* guid = find(now, "$VERSIONGUID")) guid->values = {{2, new_guid()}};
         // Saved changed: by whoever saves it now, as AutoCAD writes it — unless the
         // program set another name
@@ -1464,7 +1583,16 @@ void DxfWriter::emit_r12(const RawRecord& t, const std::function<void()>& now, c
         changed_ = true;
         return;
     }
-    merge_record(t.groups(), orig ? &o : nullptr, n, true);
+    const std::vector<DxfGroup> preserved = t.groups();
+    if (orig && n == o && error_.empty() && groups_.error().empty()) {
+        bool embedded = false;
+        for (const auto& g : n) embedded = embedded || g.code == 101;
+        if (written_as_read(preserved, embedded)) {
+            for (const DxfGroup& g : preserved) groups_.write_raw(g.code, g.value, source_binary_, g.code_columns);
+            return;
+        }
+    }
+    merge_record(preserved, orig ? &o : nullptr, n, true);
 }
 
 bool DxfWriter::table_in_file(const std::string& name) const {
@@ -1509,7 +1637,7 @@ void DxfWriter::write_table_head_r12(const std::string& name, int count) {
     auto head = [&](int n) {
         write_code(0, "TABLE");
         write_code(2, name);
-        write_code_int(70, n);
+        groups_.write_table_count(70, n);
     };
     const RawTable* raw = nullptr;
     if (r12_template() && drawing_) {

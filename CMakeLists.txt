@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(HDXF
-    VERSION 1.9.1
+    VERSION 1.9.2
     DESCRIPTION "C++ library for reading, writing and manipulating DXF files"
     LANGUAGES CXX
 )

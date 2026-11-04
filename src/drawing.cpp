@@ -1,6 +1,7 @@
 #include "hdxf.hpp"
 #include "ascii_form.hpp"
 #include "dxf_writer.hpp"
+#include "drawing_polyline.hpp"
 #include "dxf_reader.hpp"
 #include "header_defaults.hpp"
 #include "handles.hpp"
@@ -21,6 +22,7 @@
 #include <sstream>
 #include <cstdio>
 #include <algorithm>
+#include <cstring>
 #include <set>
 #include <cmath>
 
@@ -1470,7 +1472,36 @@ static bool has_owner_group(const RawRecord& record) {
     return false;
 }
 
+// How many records of an entity were read from the file: the entity, and the vertices of a polyline or the attributes of an
+// INSERT
+static size_t preserved_records_in(const Entity& e) {
+    size_t n = e.raw.empty() ? 0 : 1;
+    if (e.type == EntityType::Polyline) {
+        for (const auto& v : e.as_polyline().vertices) {
+            if (!v.raw.empty()) ++n;
+        }
+    } else if (e.type == EntityType::Insert) {
+        for (const auto& a : e.as_insert().attributes) {
+            if (!a.raw.empty()) ++n;
+        }
+    }
+    return n;
+}
+
+// The records with a preserved record in model space, in paper space (by the entity's paper_space) and in the blocks
+static void count_preserved_records(const std::vector<Entity>& entities, const std::vector<Block>& blocks, size_t& model,
+                                    size_t& paper, size_t& in_blocks) {
+    model = 0;
+    paper = 0;
+    in_blocks = 0;
+    for (const auto& e : entities) (e.props.paper_space != 0 ? paper : model) += preserved_records_in(e);
+    for (const auto& b : blocks) {
+        for (const auto& e : b.entities) in_blocks += preserved_records_in(e);
+    }
+}
+
 void Drawing::note_loaded(bool ok, DxfVersion version) {
+    count_preserved_records(entities_, blocks_, loaded_model_records_, loaded_paper_records_, loaded_block_records_);
     owner_groups_ = false;
     if (ok && (version == DxfVersion::R13 || version == DxfVersion::R14)) {
         for (const auto& t : raw_tables_) owner_groups_ = owner_groups_ || has_owner_group(t.header);
@@ -1566,6 +1597,12 @@ bool Drawing::write_dxf(DxfFormat format, std::string& out) {
         sync_table_records(original.get());
     }
 
+    // A POLYLINE's VERTEX records and SEQEND are written with the layer, linetype and color the polyline gives them. The fields
+    // hold those values only while this save runs, so a save does not change the drawing and the next one follows the polyline
+    // as it is then. After the steps above: they move entities, and the log points at the fields
+    internal::PolylineSyncLog polyline_log;
+    internal::sync_polyline_properties(entities_, blocks_, original.get(), polyline_log);
+
     // A failed save takes back the handles it gave, so the drawing is as it was
     uint64_t saved_next = next_handle_;
     const HeaderVar* seed = find_header("$HANDSEED");
@@ -1612,6 +1649,13 @@ bool Drawing::write_dxf(DxfFormat format, std::string& out) {
     writer.set_plain_ascii(source_form_ && source_form_->plain);
     writer.set_handles_given(assigned.size());
     if (from_file && source_form_) writer.set_marker_columns(&source_form_->marker_columns);
+    if (original) {
+        // Entities taken out since the file was read: their space has no extents to compare with the file's
+        size_t model = 0, paper = 0, in_blocks = 0;
+        count_preserved_records(entities_, blocks_, model, paper, in_blocks);
+        const bool blocks_lost = in_blocks < loaded_block_records_;
+        writer.set_removed_entities(blocks_lost || model < loaded_model_records_, blocks_lost || paper < loaded_paper_records_);
+    }
     if (original && r12_from_file) {
         writer.set_template(original.get(), source_binary_, nullptr, nullptr);
         writer.set_loaded_table_sizes(&loaded_table_sizes_);
@@ -1626,14 +1670,25 @@ bool Drawing::write_dxf(DxfFormat format, std::string& out) {
         return false;
     }
     for (const auto& w : writer.warnings()) warnings_.push_back(w);
-    out = oss.str();
+    out = std::move(oss).str();
     // ASCII DXF has the line ending of the file read, CRLF as AutoCAD writes it otherwise
     if (format == DxfFormat::Ascii && source_crlf_) {
-        std::string crlf;
-        crlf.reserve(out.size() + out.size() / 16);
-        for (char c : out) {
-            if (c == '\n') crlf += '\r';
-            crlf += c;
+        const size_t lines = static_cast<size_t>(std::count(out.begin(), out.end(), '\n'));
+        std::string crlf(out.size() + lines, '\0');
+        char* to = crlf.data();
+        const char* from = out.data();
+        const char* const last = from + out.size();
+        while (from < last) {
+            const char* found = static_cast<const char*>(std::memchr(from, '\n', static_cast<size_t>(last - from)));
+            const size_t run = found ? static_cast<size_t>(found - from) : static_cast<size_t>(last - from);
+            std::memcpy(to, from, run);
+            to += run;
+            from += run;
+            if (found) {
+                *to++ = '\r';
+                *to++ = '\n';
+                ++from;
+            }
         }
         out = std::move(crlf);
     }

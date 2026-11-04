@@ -9,8 +9,13 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <deque>
 #include <functional>
 #include <limits>
+#include <memory>
+#include <optional>
+#include <unordered_set>
+#include <utility>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -30,6 +35,11 @@ void Extents::add(const Point3& p) {
 }
 
 namespace {
+
+// How many whole-drawing calculations this thread has started
+thread_local size_t g_drawing_extents_started = 0;
+// How many calculations of any kind (a builder each) this thread has started
+thread_local size_t g_extents_builders_started = 0;
 
 // An affine map: WCS = m · (x, y, z, 1)
 struct Xform {
@@ -715,35 +725,159 @@ bool at_annotation_scale(const Drawing& dwg, const Entity& e, const Object& curr
     return true;
 }
 
+// Whether the entity is a body: ACIS data (3DSOLID, REGION, BODY) or a surface that holds some
+bool is_body(EntityType type) {
+    switch (type) {
+        case EntityType::Solid3D:
+        case EntityType::Region:
+        case EntityType::Body:
+        case EntityType::Surface:
+        case EntityType::ExtrudedSurface:
+        case EntityType::LoftedSurface:
+        case EntityType::RevolvedSurface:
+        case EntityType::SweptSurface:
+        case EntityType::NurbsSurface:
+        case EntityType::PlaneSurface:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// A point of an entity in its OCS (o maps it to the WCS), and with its thickness the point extruded along the OCS z
+void add_thick_ocs(Extents& out, const Xform& o, double thickness, const Point3& q) {
+    out.add(o.apply(q));
+    if (thickness != 0.0) out.add(o.apply({q.x, q.y, q.z + thickness}));
+}
+
+// A point of an entity in the coordinates of the INSERT it is in (t maps it to the WCS), and with its thickness the point
+// extruded along the extrusion direction
+void add_thick_wcs(Extents& out, const Xform& t, const Point3& extrusion, double thickness, const Point3& q) {
+    out.add(t.apply(q));
+    if (thickness != 0.0) {
+        out.add(t.apply({q.x + extrusion.x * thickness, q.y + extrusion.y * thickness, q.z + extrusion.z * thickness}));
+    }
+}
+
+// What the walk of one entity carries besides its transform
+struct WalkState {
+    bool stable = true;             // the entity lives as long as the calculation: what is read from it may be kept
+    bool faces_ok = false;          // the first pass walked this very path: a body measures only its faces
+    bool representing = false;      // the entity stands for another one at the annotation scale
+    double box_factor = 1.0;        // the factor a TOLERANCE's box is drawn by at that scale
+};
+
+// A file whose blocks all insert each other has more paths than can be walked. The box of a block in a cycle depends on the path,
+// so it is computed anew for each path, this many times; after that the last one stands for the paths that are left
+const int kCutBoxesComputed = 8;
+// In the same way: how many times a turned block in a cycle is walked with a branch cut. After that it ends its branch at once. A cycle
+// that few instances pass through is measured whole
+const int kCutWalks = 1024;
+// And how many times a MULTILEADER is met on its own path. Each one that goes on is drawn anew, which costs far more than a block's walk
+const int kCutLeaders = 8;
+
+enum class FrameKind {
+    Walk,       // the entities of a block under `transform`: an INSERT turned to an angle that is not a multiple of 90 degrees
+    Box,        // the entities of a block under its base point, summed into the box of the block
+    Use,        // the box of a block, added through `places` as soon as the block has one
+    Single,     // one entity (a MULTILEADER inside the block of another), held here
+    LeaderEnd,  // the MULTILEADER of a Single frame leaves the active path: everything it pushed is done
+    Deferred    // an entity whose codec asked for the box of an INSERT: the box is added through `transform` once measured
+};
+
+// One item of the work stack of ExtentsBuilder: what a walk through blocks would have kept on the call stack
+struct InsertFrame {
+    FrameKind kind = FrameKind::Walk;
+    const Block* block = nullptr;
+    Xform transform;
+    size_t index = 0;                       // Walk, Box: the next entity of the block
+    bool started = false;                   // Walk, Box: the block is on the active path
+    bool saved_cut = false;                 // Box: whether the boxes around it had met a cycle
+    Extents* dest = nullptr;                // where the entities add to; for a Box its own box
+    WalkState state;
+    bool in_block = false;
+    std::vector<Xform> places;              // Use
+    std::shared_ptr<const Entity> held;     // Single, Deferred: the entity, when it does not live on its own
+    const Entity* subject = nullptr;        // Single, Deferred: the entity
+    const Entity* source = nullptr;         // Single, LeaderEnd: the entity as it stands in its block
+    Extents* measured = nullptr;            // Deferred: where the INSERT is measured
+};
+
 class ExtentsBuilder {
 public:
     ExtentsBuilder(const Drawing& dwg, const std::vector<Block>& generated,
                    const std::unordered_map<const Entity*, std::string>& dim_block_names,
-                   const std::vector<Block>* replaced = nullptr)
-        : dwg_(dwg), generated_(generated), dim_block_names_(dim_block_names), replaced_(replaced), text_(dwg),
-          acis_(dwg), annotation_scale_(current_annotation_scale(dwg)) {}
+                   const std::vector<Block>* replaced = nullptr, ExtentsCounters* counters = nullptr)
+        : dwg_(dwg), generated_(generated), dim_block_names_(dim_block_names), replaced_(replaced), counters_(counters),
+          text_(dwg), acis_(dwg), annotation_scale_(current_annotation_scale(dwg)) {
+        ++g_extents_builders_started;
+    }
 
+    // e under t, counted into out, with all it inserts
     void entity(const Entity& e, const Xform& t, bool in_block, Extents& out);
     const std::vector<std::string>& warnings() const { return text_.warnings(); }
+    // Whether a body is among the `count` entities from `first`, or in a block they insert
+    bool reaches_bodies(const Entity* first, size_t count) const;
+    // The first pass counts INSERT and the bodies only, and of the bodies the edges only. What it counts is a part of what the
+    // second pass counts; that one starts from it, and measures the faces of a body where the first pass walked the same path
+    void begin_edge_pass() { edge_pass_ = true; }
+    void end_edge_pass() {
+        edge_pass_ = false;
+        edges_known_ = true;
+        cut_boxes_.clear();
+        cut_walks_.clear();
+    }
 
 private:
     const Block* find(const std::string& name) const;
-    const Extents& block_extents(const Block& b);
+    const Extents* finished_box(const Block& b) const;
     void add_box(const Extents& box, const Xform& t, Extents& out);
+    void visit(const Entity& e, const Xform& t, bool in_block, Extents& out, const WalkState& s);
+    void run_codec(const EntityCodec& codec, const Entity& e, const Xform& t, bool in_block, Extents& out, const WalkState& s,
+                   bool box_empty);
+    // The block's box added through each of `places` to out: now when the block has one, else when the frames pushed for it have
+    // computed it
+    void use_box(const Block& b, std::vector<Xform> places, Extents& out);
+    void push_box(const Block& b);
+    void run(size_t base);
+    void step_block();
+    void finish_use();
+    void finish_deferred();
+    // An INSERT of a block on the active path ends its branch there. A box computed with a branch cut is not final: the box of a
+    // block is only kept when nothing in it was cut, so that the result never depends on the order the blocks are asked for in
+    void note_cut() { cut_ = true; }
 
     const Drawing& dwg_;
     const std::vector<Block>& generated_;
     const std::unordered_map<const Entity*, std::string>& dim_block_names_;
     const std::vector<Block>* replaced_;
+    ExtentsCounters* counters_;
+    // The boxes of the blocks in their own coordinates, relative to their base points: with all they hold, and (a separate
+    // cache: the two never mix) with only the INSERT and the edges of the bodies
     std::unordered_map<const Block*, Extents> cache_;
-    std::unordered_map<const Block*, bool> busy_;     // a block that inserts itself
+    std::unordered_map<const Block*, Extents> edge_cache_;
+    // The boxes with a cycle in them, one set for each pass: those above hold only what is the same on every path. A box walked from
+    // no active path is what any INSERT outside a block has; a box kept on a path (kCutBoxesComputed) is for the other paths
+    std::unordered_map<const Block*, Extents> top_boxes_[2];
+    std::unordered_map<const Block*, Extents> path_boxes_[2];
+    // The blocks on the active path: those with a frame that has started
+    std::unordered_set<const Block*> busy_;
+    std::vector<InsertFrame> frames_;
+    std::deque<Extents> boxes_;                 // the boxes under computation; they keep their addresses
+    bool cut_ = false;                          // a branch was cut since the box under computation began
+    std::unordered_map<const Block*, int> cut_boxes_;   // how many times a block's box has come out with a branch cut
+    std::unordered_map<const void*, int> cut_walks_;    // the same for a turned block's walk and a MULTILEADER (kCutWalks, kCutLeaders)
+    std::unordered_set<const Entity*> leaders_busy_;    // the MULTILEADERs of Single frames on the active path
+    const Block* last_box_block_ = nullptr;     // the box a Box frame computed last, for the Use frame that waits for it
+    Extents last_box_;
+    bool edge_pass_ = false;
+    bool edges_known_ = false;
+    // The bodies read from the entities that live as long as the calculation
+    std::unordered_map<const Entity*, std::vector<AcisBody>> bodies_;
     TextLayout text_;
     AcisSource acis_;
-    // 9.S (Codex 17): the current annotation scale (CANNOSCALE), and while an annotative entity's representation at it is
-    // counted, the factor its TOLERANCE box is drawn by
+    // The current annotation scale (CANNOSCALE)
     const Object* annotation_scale_ = nullptr;
-    bool representing_ = false;
-    double box_factor_ = 1.0;
 };
 
 const Block* ExtentsBuilder::find(const std::string& name) const {
@@ -759,19 +893,41 @@ const Block* ExtentsBuilder::find(const std::string& name) const {
     return nullptr;
 }
 
-// A block's extents in its own coordinates, relative to its base point. ATTDEF is not
-// part of an insertion (its ATTRIB is).
-const Extents& ExtentsBuilder::block_extents(const Block& b) {
-    auto it = cache_.find(&b);
-    if (it != cache_.end()) return it->second;
-    Extents box;
-    if (!busy_[&b]) {
-        busy_[&b] = true;
-        Xform base = translate({-b.base_point.x, -b.base_point.y, -b.base_point.z});
-        for (const auto& e : b.entities) entity(e, base, true, box);
-        busy_[&b] = false;
+bool ExtentsBuilder::reaches_bodies(const Entity* first, size_t count) const {
+    std::vector<const Block*> todo;
+    std::unordered_set<const Block*> seen;
+    auto found = [&](const Entity& e) {
+        if (is_body(e.type)) return true;
+        if (e.type == EntityType::Insert) {
+            const Block* b = find(e.as_insert().block_name);
+            if (b && seen.insert(b).second) todo.push_back(b);
+        }
+        return false;
+    };
+    for (size_t i = 0; i < count; ++i) {
+        if (found(first[i])) return true;
     }
-    return cache_[&b] = box;
+    while (!todo.empty()) {
+        const Block* b = todo.back();
+        todo.pop_back();
+        for (const auto& e : b->entities) {
+            if (found(e)) return true;
+        }
+    }
+    return false;
+}
+
+// The box of a block that is final, in its own coordinates relative to its base point; null while it has none
+const Extents* ExtentsBuilder::finished_box(const Block& b) const {
+    const auto& cache = edge_pass_ ? edge_cache_ : cache_;
+    auto it = cache.find(&b);
+    if (it != cache.end()) return &it->second;
+    if (busy_.empty()) {
+        const auto& top = top_boxes_[edge_pass_ ? 1 : 0];
+        it = top.find(&b);
+        if (it != top.end()) return &it->second;
+    }
+    return nullptr;
 }
 
 void ExtentsBuilder::add_box(const Extents& box, const Xform& t, Extents& out) {
@@ -782,19 +938,251 @@ void ExtentsBuilder::add_box(const Extents& box, const Xform& t, Extents& out) {
     }
 }
 
+void ExtentsBuilder::push_box(const Block& b) {
+    InsertFrame f;
+    f.kind = FrameKind::Box;
+    f.block = &b;
+    f.transform = translate({-b.base_point.x, -b.base_point.y, -b.base_point.z});
+    // With the box of its edges to start from, the bodies in it measure their faces only
+    f.state.faces_ok = !edge_pass_ && edge_cache_.count(&b) != 0;
+    frames_.push_back(std::move(f));
+}
+
+void ExtentsBuilder::use_box(const Block& b, std::vector<Xform> places, Extents& out) {
+    if (const Extents* box = finished_box(b)) {
+        for (const Xform& place : places) add_box(*box, place, out);
+        return;
+    }
+    // An INSERT of a block that is being walked: a cycle. This branch ends here, whatever else is in the block stays
+    if (busy_.count(&b)) {
+        note_cut();
+        return;
+    }
+    // A block in a cycle whose paths have been walked enough: the box it was left with
+    const auto& kept = path_boxes_[edge_pass_ ? 1 : 0];
+    if (auto it = kept.find(&b); it != kept.end()) {
+        note_cut();
+        for (const Xform& place : places) add_box(it->second, place, out);
+        return;
+    }
+    InsertFrame use;
+    use.kind = FrameKind::Use;
+    use.block = &b;
+    use.dest = &out;
+    use.places = std::move(places);
+    frames_.push_back(std::move(use));
+    push_box(b);
+}
+
+// The frames above `base` until none is left. A frame is looked at, never kept across what it pushes: the stack grows
+void ExtentsBuilder::run(size_t base) {
+    while (frames_.size() > base) {
+        switch (frames_.back().kind) {
+            case FrameKind::Walk:
+            case FrameKind::Box:
+                step_block();
+                break;
+            case FrameKind::Use:
+                finish_use();
+                break;
+            case FrameKind::Single: {
+                InsertFrame f = std::move(frames_.back());
+                frames_.pop_back();
+                // A MULTILEADER in the block it draws ends this branch, as an INSERT of a block on the active path does
+                if (leaders_busy_.count(f.source)) {
+                    note_cut();
+                    ++cut_walks_[f.source];
+                    break;
+                }
+                if (auto used = cut_walks_.find(f.source); used != cut_walks_.end() && used->second >= kCutLeaders) {
+                    note_cut();
+                    break;
+                }
+                leaders_busy_.insert(f.source);
+                InsertFrame end;
+                end.kind = FrameKind::LeaderEnd;
+                end.source = f.source;
+                frames_.push_back(std::move(end));
+                visit(*f.subject, f.transform, f.in_block, *f.dest, f.state);
+                break;
+            }
+            case FrameKind::LeaderEnd:
+                leaders_busy_.erase(frames_.back().source);
+                frames_.pop_back();
+                break;
+            case FrameKind::Deferred:
+                finish_deferred();
+                break;
+        }
+    }
+}
+
+// The next entity of the block of the frame on top, or the end of the walk
+void ExtentsBuilder::step_block() {
+    InsertFrame* f = &frames_.back();
+    if (!f->started) {
+        if (busy_.count(f->block)) {
+            note_cut();
+            frames_.pop_back();
+            return;
+        }
+        if (f->kind == FrameKind::Walk) {
+            if (auto used = cut_walks_.find(f->block); used != cut_walks_.end() && used->second >= kCutWalks) {
+                note_cut();
+                frames_.pop_back();
+                return;
+            }
+        }
+        f->started = true;
+        busy_.insert(f->block);
+        f->saved_cut = cut_;
+        cut_ = false;
+        if (f->kind == FrameKind::Box) {
+            if (counters_) ++counters_->block_boxes;
+            // The box starts from the box of its edges when the first pass found one
+            auto edges = edge_cache_.find(f->block);
+            boxes_.push_back(!edge_pass_ && edges != edge_cache_.end() ? edges->second : Extents{});
+            f->dest = &boxes_.back();
+        } else if (counters_) {
+            ++counters_->insert_walks;
+        }
+    }
+    if (f->index < f->block->entities.size()) {
+        const Entity& inner = f->block->entities[f->index++];
+        const Xform m = f->transform;
+        Extents* dest = f->dest;
+        WalkState s;
+        s.faces_ok = f->state.faces_ok;
+        s.representing = f->state.representing;
+        s.box_factor = f->state.box_factor;
+        visit(inner, m, true, *dest, s);
+        return;
+    }
+    busy_.erase(f->block);
+    if (f->kind == FrameKind::Walk) {
+        if (cut_) ++cut_walks_[f->block];
+        cut_ = cut_ || f->saved_cut;
+        frames_.pop_back();
+        return;
+    }
+    // A box with nothing cut is the same on every path. One with a branch cut depends on its path: walked from no active path it is
+    // what every INSERT outside a block gets, and on a path it is computed anew until kCutBoxesComputed
+    const Block* block = f->block;
+    const Extents box = *f->dest;
+    const size_t pass = edge_pass_ ? 1 : 0;
+    if (!cut_) {
+        (edge_pass_ ? edge_cache_ : cache_)[block] = box;
+    } else if (busy_.empty()) {
+        top_boxes_[pass][block] = box;
+    } else if (++cut_boxes_[block] >= kCutBoxesComputed) {
+        path_boxes_[pass][block] = box;
+    }
+    cut_ = cut_ || f->saved_cut;
+    boxes_.pop_back();
+    frames_.pop_back();
+    last_box_block_ = block;
+    last_box_ = box;
+}
+
+void ExtentsBuilder::finish_use() {
+    InsertFrame f = std::move(frames_.back());
+    frames_.pop_back();
+    const Extents* box = finished_box(*f.block);
+    if (!box && last_box_block_ == f.block) box = &last_box_;
+    if (box) {
+        for (const Xform& place : f.places) add_box(*box, place, *f.dest);
+    }
+    last_box_block_ = nullptr;
+}
+
+// The box of the INSERT a codec asked for is measured: its corners through the transform of the entity, or, when it came out
+// empty, the codec once more with nothing to ask
+void ExtentsBuilder::finish_deferred() {
+    InsertFrame f = std::move(frames_.back());
+    frames_.pop_back();
+    const Extents box = *f.measured;
+    boxes_.pop_back();
+    const Entity& subject = *f.subject;
+    if (!box.empty()) {
+        auto corner = [&](double x, double y, double z) {
+            add_thick_wcs(*f.dest, f.transform, subject.props.extrusion, subject.props.thickness, {x, y, z});
+        };
+        for (double x : {box.min.x, box.max.x}) {
+            for (double y : {box.min.y, box.max.y}) corner(x, y, box.min.z);
+        }
+        if (box.max.z != box.min.z) corner(box.min.x, box.min.y, box.max.z);
+        return;
+    }
+    const EntityCodec* codec = TypedRegistry::instance().find_entity(subject.type);
+    if (codec && codec->extents) run_codec(*codec, subject, f.transform, f.in_block, *f.dest, f.state, true);
+}
+
+// The extents code of a typed entity. It may ask for the box of an INSERT (its block, measured here on the work stack rather than
+// by a calculation of its own); the frame that adds it waits below the frames of the measuring
+void ExtentsBuilder::run_codec(const EntityCodec& codec, const Entity& e, const Xform& t, bool in_block, Extents& out,
+                               const WalkState& s, bool box_empty) {
+    const EntityProperties& p = e.props;
+    const Xform o = t.then(ocs(p.extrusion));
+    std::optional<Entity> wanted;
+    TypedExtentsSink sink;
+    sink.add_ocs = [&](const Point3& q) { add_thick_ocs(out, o, p.thickness, q); };
+    sink.add_wcs = [&](const Point3& q) { add_thick_wcs(out, t, p.extrusion, p.thickness, q); };
+    sink.drawing = &dwg_;
+    sink.in_block = in_block;
+    sink.block_box_empty = box_empty;
+    if (!box_empty) {
+        sink.defer_insert_box = [&wanted](Entity insert) {
+            if (!wanted) wanted = std::move(insert);
+        };
+    }
+    codec.extents(e, sink);
+    if (!wanted) return;
+
+    InsertFrame f;
+    f.kind = FrameKind::Deferred;
+    f.transform = t;
+    f.in_block = in_block;
+    f.dest = &out;
+    f.state = s;
+    if (s.stable) {
+        f.subject = &e;
+    } else {
+        f.held = std::make_shared<const Entity>(e);
+        f.subject = f.held.get();
+    }
+    boxes_.emplace_back();
+    Extents* measured = &boxes_.back();
+    f.measured = measured;
+    frames_.push_back(std::move(f));
+    WalkState inner;
+    inner.stable = false;
+    visit(*wanted, Xform{}, false, *measured, inner);
+}
+
 void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Extents& out) {
+    const size_t base = frames_.size();
+    WalkState s;
+    s.faces_ok = edges_known_ && !edge_pass_;
+    visit(e, t, in_block, out, s);
+    run(base);
+}
+
+void ExtentsBuilder::visit(const Entity& e, const Xform& t, bool in_block, Extents& out, const WalkState& s) {
+    // An entity with group 60 set is not in the extents, nor is anything it inserts
+    if (!e.props.visible) return;
+    if (edge_pass_ && !is_body(e.type) && e.type != EntityType::Insert) return;
     // An annotative entity of model space is drawn at the current annotation scale (CANNOSCALE) by its context for it, when that
-    // is not its default (9.S, Codex 17; AutoCAD 2025's $EXTMIN/$EXTMAX of fas9_contexts autoscale and Erik's annotative). One in
-    // a block is drawn by the INSERT's scale (not established: ej testat)
-    if (annotation_scale_ && !in_block && !representing_) {
+    // is not its default (AutoCAD 2025's $EXTMIN/$EXTMAX of fas9_contexts autoscale and annotative). One in a block is drawn by
+    // the INSERT's scale (not established: ej testat)
+    if (annotation_scale_ && !in_block && !s.representing) {
         Entity rep;
         double factor = 1.0;
         if (at_annotation_scale(dwg_, e, *annotation_scale_, rep, factor)) {
-            representing_ = true;
-            box_factor_ = factor;
-            entity(rep, t, in_block, out);
-            representing_ = false;
-            box_factor_ = 1.0;
+            WalkState represented = s;
+            represented.stable = false;
+            represented.representing = true;
+            represented.box_factor = factor;
+            visit(rep, t, in_block, out, represented);
             return;
         }
     }
@@ -818,18 +1206,18 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
                               .then(scale(d.x_scale, d.y_scale, d.z_scale))
                               .then(translate({-b->base_point.x, -b->base_point.y, -b->base_point.z}));
                 // A copy keeps its contexts: drawn by the one of the current scale (an annotative block's copy has its attributes
-                // where AutoCAD left them for every copy, its contexts where the scale puts them: Erik's annotative 2000 … 2013)
+                // where AutoCAD left them for every copy, its contexts where the scale puts them: AutoCAD's annotative 2000 … 2013)
                 for (const Entity* inner : shown) {
                     Entity rep;
                     double factor = 1.0;
-                    if (!representing_ && at_annotation_scale(dwg_, *inner, *annotation_scale_, rep, factor)) {
-                        representing_ = true;
-                        box_factor_ = factor;
-                        entity(rep, m, true, out);
-                        representing_ = false;
-                        box_factor_ = 1.0;
+                    if (!s.representing && at_annotation_scale(dwg_, *inner, *annotation_scale_, rep, factor)) {
+                        WalkState represented = s;
+                        represented.stable = false;
+                        represented.representing = true;
+                        represented.box_factor = factor;
+                        visit(rep, m, true, out, represented);
                     } else {
-                        entity(*inner, m, true, out);
+                        visit(*inner, m, true, out, s);
                     }
                 }
                 return;
@@ -839,18 +1227,8 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
     const EntityProperties& p = e.props;
     Xform o = t.then(ocs(p.extrusion));         // for the types that are in their OCS
     // Thickness extrudes along the extrusion direction (OCS z)
-    auto add_ocs = [&](const Point3& q) {
-        out.add(o.apply(q));
-        if (p.thickness != 0.0) out.add(o.apply({q.x, q.y, q.z + p.thickness}));
-    };
-    auto add_wcs = [&](const Point3& q) {
-        out.add(t.apply(q));
-        if (p.thickness != 0.0) {
-            Point3 n = p.extrusion;
-            out.add(t.apply({q.x + n.x * p.thickness, q.y + n.y * p.thickness,
-                             q.z + n.z * p.thickness}));
-        }
-    };
+    auto add_ocs = [&](const Point3& q) { add_thick_ocs(out, o, p.thickness, q); };
+    auto add_wcs = [&](const Point3& q) { add_thick_wcs(out, t, p.extrusion, p.thickness, q); };
     auto arc = [&](const Point3& center, double r, double a0, double a1, bool full) {
         add_arc(out, o, center, r, a0, a1, full);
         if (p.thickness != 0.0) {
@@ -904,15 +1282,9 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
         }
     };
 
-    // The types phase 9 typed give their own extents (TypedRecordTypes.hpp, B107): what they add is mapped
-    // like the entity's own points
+    // A type with a codec gives its own extents (TypedRecordTypes.hpp): what it adds is mapped like the entity's own points
     if (const EntityCodec* codec = TypedRegistry::instance().find_entity(e.type); codec && codec->extents) {
-        TypedExtentsSink sink;
-        sink.add_ocs = add_ocs;
-        sink.add_wcs = add_wcs;
-        sink.drawing = &dwg_;
-        sink.in_block = in_block;
-        codec->extents(e, sink);
+        run_codec(*codec, e, t, in_block, out, s, false);
         return;
     }
 
@@ -945,6 +1317,7 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
             const auto& d = e.as_attdef();
             bool constant = d.flags & 2;
             if (in_block && !constant) break;
+            if (in_block && (d.flags & 1)) break;           // a constant one in a block, invisible
             embedded_text(d.multiline);
             text_line({d.style, in_block ? d.default_value : d.tag, d.height, d.width_factor,
                        d.oblique_angle, d.rotation, d.generation_flags, d.h_justify, d.v_justify,
@@ -953,6 +1326,7 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
         }
         case EntityType::Attrib: {
             const auto& d = e.as_attrib();
+            if (d.flags & 1) break;                         // invisible
             embedded_text(d.multiline);
             text_line({d.style, d.value, d.height, d.width_factor, d.oblique_angle, d.rotation,
                        d.generation_flags, d.h_justify, d.v_justify, d.start_point, d.alignment_point});
@@ -1030,12 +1404,12 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
         case EntityType::Tolerance: {
             const auto& d = e.as_tolerance();
             MTextSize size = text_.tolerance(d, p.xdata);
-            if (box_factor_ != 1.0) {
+            if (s.box_factor != 1.0) {
                 // At an annotation scale its frames and text are drawn larger by the factor from its insertion point (9.S)
-                size.box.min_x *= box_factor_;
-                size.box.max_x *= box_factor_;
-                size.box.min_y *= box_factor_;
-                size.box.max_y *= box_factor_;
+                size.box.min_x *= s.box_factor;
+                size.box.max_x *= s.box_factor;
+                size.box.min_y *= s.box_factor;
+                size.box.max_y *= s.box_factor;
             }
             if (!size.font) out.add(t.apply(d.insertion_point));
             else if (size.ink) add_plane_box(out, t, d.insertion_point, d.x_axis_direction, p.extrusion, size.box);
@@ -1085,7 +1459,23 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
             for (int i = 0; i < 3; ++i) {
                 for (int j = 0; j < 4; ++j) map.m[i][j] = t.m[i][j];
             }
-            acis_extents(acis_.bodies(e), map, out);
+            // Read once for an entity that lives on; one that does not (a copy, a part of a MULTILEADER's block) is read where it is met
+            std::vector<AcisBody> own;
+            const std::vector<AcisBody>* bodies = &own;
+            if (s.stable) {
+                auto found = bodies_.find(&e);
+                if (found == bodies_.end()) {
+                    if (counters_) ++counters_->bodies_read;
+                    found = bodies_.emplace(&e, acis_.bodies(e)).first;
+                }
+                bodies = &found->second;
+            } else {
+                if (counters_) ++counters_->bodies_read;
+                own = acis_.bodies(e);
+            }
+            const AcisExtentsPass pass = edge_pass_ ? AcisExtentsPass::Edges
+                                                    : (s.faces_ok ? AcisExtentsPass::Faces : AcisExtentsPass::All);
+            acis_extents(*bodies, map, out, pass, counters_);
             break;
         }
         case EntityType::Helix:
@@ -1173,39 +1563,56 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
         }
         case EntityType::Insert: {
             const auto& d = e.as_insert();
-            for (const auto& attr : d.attributes) {
-                Entity a;
-                a.type = EntityType::Attrib;
-                a.props = attr.props;
-                a.data = attr.data;
-                entity(a, t, false, out);
+            if (!edge_pass_) {
+                WalkState attribute;
+                attribute.stable = false;
+                attribute.representing = s.representing;
+                attribute.box_factor = s.box_factor;
+                for (const auto& attr : d.attributes) {
+                    if (!attr.props.visible || (attr.data.flags & 1)) continue;
+                    Entity a;
+                    a.type = EntityType::Attrib;
+                    a.props = attr.props;
+                    a.data = attr.data;
+                    visit(a, t, false, out, attribute);
+                }
             }
             const Block* b = find(d.block_name);
             if (!b) break;
-            const Extents& box = block_extents(*b);
-            int cols = std::max(1, d.column_count);
-            int rows = std::max(1, d.row_count);
+            const int cols = std::max(1, d.column_count);
+            const int rows = std::max(1, d.row_count);
             // Turned a multiple of 90 degrees the box of the block has the extents of what is in it (a box is
             // convex: the corner copies of an array bound all of them). Turned another angle AutoCAD's extents
             // are those of the entities where they are, not the turned box's corners (AutoCAD 2025,
             // fas9_existing_fields.scr: an inserted wipeout and lines, ZOOM E and not), so the entities are mapped
             const double quarter = d.rotation / 90.0;
             const bool aligned = std::fabs(quarter - std::round(quarter)) < 1e-9;
-            Xform base = translate({-b->base_point.x, -b->base_point.y, -b->base_point.z});
-            for (int c : {0, cols - 1}) {
-                for (int r : {0, rows - 1}) {
-                    Xform m = o.then(translate(d.insertion_point))
-                               .then(rotate_z(d.rotation))
-                               .then(translate({c * d.column_spacing, r * d.row_spacing, 0.0}))
-                               .then(scale(d.x_scale, d.y_scale, d.z_scale));
-                    if (aligned) {
-                        add_box(box, m, out);
-                    } else if (!busy_[b]) {
-                        busy_[b] = true;
-                        for (const auto& inner : b->entities) entity(inner, m.then(base), true, out);
-                        busy_[b] = false;
-                    }
+            // One place for each corner of the array that exists: the first, and the last in a direction only when it has more than one
+            std::vector<Xform> places;
+            for (int c = 0; c < (cols > 1 ? 2 : 1); ++c) {
+                for (int r = 0; r < (rows > 1 ? 2 : 1); ++r) {
+                    places.push_back(o.then(translate(d.insertion_point))
+                                         .then(rotate_z(d.rotation))
+                                         .then(translate({(c ? cols - 1 : 0) * d.column_spacing,
+                                                          (r ? rows - 1 : 0) * d.row_spacing, 0.0}))
+                                         .then(scale(d.x_scale, d.y_scale, d.z_scale)));
                 }
+            }
+            if (aligned) {
+                use_box(*b, std::move(places), out);
+                break;
+            }
+            const Xform base = translate({-b->base_point.x, -b->base_point.y, -b->base_point.z});
+            for (const Xform& m : places) {
+                InsertFrame walk;
+                walk.kind = FrameKind::Walk;
+                walk.block = b;
+                walk.transform = m.then(base);
+                walk.dest = &out;
+                walk.state.faces_ok = s.faces_ok;
+                walk.state.representing = s.representing;
+                walk.state.box_factor = s.box_factor;
+                frames_.push_back(std::move(walk));
             }
             break;
         }
@@ -1232,7 +1639,7 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
                              ax.z * shift.x + ay.z * shift.y + az.z / len * shift.z};
                     place = place.then(translate(w));
                 }
-                add_box(block_extents(*b), place, out);
+                use_box(*b, std::vector<Xform>{place}, out);
             }
             out.add(t.apply(d.definition_point));
             break;
@@ -1258,7 +1665,24 @@ void ExtentsBuilder::entity(const Entity& e, const Xform& t, bool in_block, Exte
                                 for (int i = 0; i < 3; ++i) {
                                     for (int j = 0; j < 4; ++j) x.m[i][j] = m[4 * i + j];
                                 }
-                                entity(be, x, true, out);
+                                WalkState inner;
+                                inner.stable = false;
+                                if (be.type == EntityType::MLeader) {
+                                    // One MULTILEADER inside the block of another is measured from the work stack, so that
+                                    // how deep they go costs no call stack
+                                    InsertFrame f;
+                                    f.kind = FrameKind::Single;
+                                    f.transform = x;
+                                    f.in_block = true;
+                                    f.dest = &out;
+                                    f.state = inner;
+                                    f.held = std::make_shared<const Entity>(be);
+                                    f.subject = f.held.get();
+                                    f.source = &be;
+                                    frames_.push_back(std::move(f));
+                                } else {
+                                    visit(be, x, true, out, inner);
+                                }
                             },
                             out);
             break;
@@ -1373,21 +1797,40 @@ void polynomial_roots(const std::vector<double>& a, double lo, double hi, std::v
 
 std::vector<double> bernstein_power(const std::vector<double>& q) { return bernstein_to_power(q); }
 
+size_t drawing_extents_started() { return g_drawing_extents_started; }
+
+size_t extents_builders_started() { return g_extents_builders_started; }
+
 void drawing_extents(const Drawing& dwg, const std::vector<Block>& generated,
                      const std::unordered_map<const Entity*, std::string>& dim_block_names,
                      Extents& model, Extents& paper, std::vector<std::string>& warnings,
-                     const std::vector<Block>* replaced) {
-    ExtentsBuilder builder(dwg, generated, dim_block_names, replaced);
+                     const std::vector<Block>* replaced, ExtentsCounters* counters) {
+    ++g_drawing_extents_started;
+    ExtentsBuilder builder(dwg, generated, dim_block_names, replaced, counters);
+    // Bodies take most of the work: a first pass with only them and the INSERT that holds them gives the box the second one starts
+    // from. A drawing without a body goes straight to the second
+    if (builder.reaches_bodies(dwg.entities().data(), dwg.entities().size())) {
+        builder.begin_edge_pass();
+        for (const auto& e : dwg.entities()) {
+            builder.entity(e, Xform{}, false, e.props.paper_space ? paper : model);
+        }
+        builder.end_edge_pass();
+    }
     for (const auto& e : dwg.entities()) {
         builder.entity(e, Xform{}, false, e.props.paper_space ? paper : model);
     }
     warnings = builder.warnings();
 }
 
-void entity_extents(const Drawing& dwg, const Entity& e, Extents& out) {
+void entity_extents(const Drawing& dwg, const Entity& e, Extents& out, ExtentsCounters* counters) {
     std::vector<Block> none;
     std::unordered_map<const Entity*, std::string> names;
-    ExtentsBuilder builder(dwg, none, names);
+    ExtentsBuilder builder(dwg, none, names, nullptr, counters);
+    if (builder.reaches_bodies(&e, 1)) {
+        builder.begin_edge_pass();
+        builder.entity(e, Xform{}, false, out);
+        builder.end_edge_pass();
+    }
     builder.entity(e, Xform{}, false, out);
 }
 
