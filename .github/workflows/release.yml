@@ -1,6 +1,6 @@
 # Builds HDxf in Release mode and puts prebuilt libraries on the release: one package per toolchain,
 # since static C++ libraries cannot be mixed between MSVC, MinGW and GCC. Each package is a
-# `cmake --install`: the libraries, hdxf.hpp and hdxf_acis.hpp, and the CMake package for
+# `cmake --install`: the libraries, hdxf.hpp with include/hdxf/ and hdxf_acis.hpp, and the CMake package for
 # find_package(hdxf), plus the license and the READMEs.
 #
 # Runs when a tag vX.Y.Z is pushed, or by hand (Actions → Release → Run workflow) for a tag that

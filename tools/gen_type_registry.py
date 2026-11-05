@@ -6,12 +6,12 @@
 
 Sources: doc/plans/2026-10-25-fas-9-typer.md (appendix A: every 0-record name of the inventory with its
 status and sample counts; appendix B: every observed group order per untyped type; appendix C: the
-requested names without records) and the dispatch of the reader (src/dxf_reader.cpp parse_single_entity(),
-src/object_reader.cpp parse_object()), which decides what is typed in the code now (decision B117: the
+requested names without records) and the dispatch of the reader (src/read/dxf_reader.cpp parse_single_entity(),
+src/read/object_reader.cpp parse_object()), which decides what is typed in the code now (decision B117: the
 current code, not the old plan's status).
 
 Writes
-    src/typed_registry_data.inc    the library's register (TypeRegistryEntry rows, name order)
+    src/records/typed_registry_data.inc    the library's register (TypeRegistryEntry rows, name order)
     test/data/typed_types.tsv      appendix A/C: kind, status, step, sample counts per version
     test/data/typed_forms.tsv      appendix B: the observed group orders with their sample and SHA256
 
@@ -25,9 +25,9 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OLD_PLAN = os.path.join(ROOT, "doc", "plans", "2026-10-25-fas-9-typer.md")
-READER = os.path.join(ROOT, "src", "dxf_reader.cpp")
-OBJECT_READER = os.path.join(ROOT, "src", "object_reader.cpp")
-OUT_INC = os.path.join(ROOT, "src", "typed_registry_data.inc")
+READER = os.path.join(ROOT, "src", "read", "dxf_reader.cpp")
+OBJECT_READER = os.path.join(ROOT, "src", "read", "object_reader.cpp")
+OUT_INC = os.path.join(ROOT, "src", "records", "typed_registry_data.inc")
 OUT_TYPES = os.path.join(ROOT, "test", "data", "typed_types.tsv")
 OUT_FORMS = os.path.join(ROOT, "test", "data", "typed_forms.tsv")
 

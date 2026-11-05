@@ -1,11 +1,11 @@
 #include "test_framework.hpp"
 #include "type_version_matrix.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
-#include "number_parse.hpp"
-#include "dxf_reader.hpp"
-#include "handles.hpp"
-#include "template_2000.hpp"
+#include "io/group_io.hpp"
+#include "io/number_parse.hpp"
+#include "read/dxf_reader.hpp"
+#include "io/handles.hpp"
+#include "write/template_2000.hpp"
 #include <algorithm>
 #include <clocale>
 #include <cmath>

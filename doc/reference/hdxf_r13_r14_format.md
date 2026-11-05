@@ -2,7 +2,7 @@
 
 Format profile for phase 7 (plan `doc/plans/2026-10-25-fas-7-dxf-r13-r14.md`), step 7.1, written 2026-10-27.
 It says what an R13 (AC1012) and an R14 (AC1014) file looks like, group by group, where each statement
-comes from, how it differs from what HDxf's 2000 writer (`src/dxf_writer_2000.cpp`) writes today, and what
+comes from, how it differs from what HDxf's 2000 writer (`src/write/dxf_writer_2000.cpp`) writes today, and what
 each later step (7.2 – 7.21) has to do. Nothing here is copied from another library's code.
 
 ## 1. Rules, sources and evidence
@@ -756,7 +756,7 @@ DIMLUNIT not 4/5) at a non-default value are version errors (B91), at the defaul
 
 * Entity: `100 AcDbModelerGeometry`, **`70 1`** ("Modeler format version number (currently = 1)": R14:3dsolid, body, region; R13 the same), then the SAT text in `1` groups (**one SAT record per group**, < 255 characters:
   maxima 82, 194, 231 characters in `example_r13`, `as_flat`, `kicad`), `3` for a continuation only when a `1` string would exceed 255. No `AcDb3dSolid` marker, no history `350`, no `2` GUID, no ACDSDATA/SAB.
-* **Encryption**: every character except the space is replaced by `159 − c` (HDxf:`src/acis.cpp` already decodes this for 2000+). The decoded text: line 1 = the header `106 <records> 1 0`
+* **Encryption**: every character except the space is replaced by `159 − c` (HDxf:`src/geometry/acis.cpp` already decodes this for 2000+). The decoded text: line 1 = the header `106 <records> 1 0`
   (version, number of records, 1, 0), then **no product/date/units lines**: the records follow at once, `body $-1 $1 $-1 $-1 #`, `lump …`, `shell …`, `face …`, `loop …`, `plane-surface $-1 x y z nx ny nz ux uy uz …`,
   each ended by `#`, no `End-of-ACIS-data`, doubles with 17 digits (decoded from `example_r13.dxf` REGION 176, `kicad` 93A0).
 * **SAT version per DXF version.** Seen: `106` in ODA's **R13 and R14** output of AutoCAD's 2000-form bodies (400 in `example_2000.dxf`, the source) — `example_r13`/`example_r14` REGION 176, 3DSOLID 2E1, REGION 37D;

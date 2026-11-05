@@ -1,8 +1,8 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
-#include "dimstyle_legacy.hpp"
-#include "dxf_writer.hpp"
+#include "io/group_io.hpp"
+#include "write/dimstyle_legacy.hpp"
+#include "write/dxf_writer.hpp"
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>

@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "dxf_structure.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
+#include "io/group_io.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>

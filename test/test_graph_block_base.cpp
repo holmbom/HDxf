@@ -2,7 +2,7 @@
 #include "hdxf.hpp"
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
-#include "TypedRecordTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

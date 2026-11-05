@@ -2,9 +2,9 @@
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "TypedRecordTypes.hpp"
-#include "proxy_graphics.hpp"
-#include "proxy_record_graphics.hpp"
+#include "records/TypedRecordTypes.hpp"
+#include "graphics/proxy_graphics.hpp"
+#include "graphics/proxy_record_graphics.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>

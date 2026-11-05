@@ -17,7 +17,7 @@ program's file) from the provenance table below — the provenance table is the 
 The default roots are build/test-data, doc/facit and doc/acad_*_dxf.dxf. Standard library only; reads
 text, never HDxf's code and never another project's.
 
---check-registry   compare the names found with src/typed_registry_data.inc (exit 1 for a name not in it)
+--check-registry   compare the names found with src/records/typed_registry_data.inc (exit 1 for a name not in it)
 --forms            write the observed group orders (appendix B of the old plan) with their samples
 """
 
@@ -507,7 +507,7 @@ def to_json(result, with_forms):
 
 def registry_names():
     names = set()
-    path = os.path.join(ROOT, "src", "typed_registry_data.inc")
+    path = os.path.join(ROOT, "src", "records", "typed_registry_data.inc")
     with open(path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r'\{"([^"]+)",', line)
@@ -633,7 +633,7 @@ def main(argv):
     p.add_argument("--root", action="append", default=[], help="a directory to scan (default: the project's corpus)")
     p.add_argument("--json", help="write the inventory as JSON to this file")
     p.add_argument("--forms", action="store_true", help="include the observed group orders in the JSON")
-    p.add_argument("--check-registry", action="store_true", help="every name found must be in src/typed_registry_data.inc")
+    p.add_argument("--check-registry", action="store_true", help="every name found must be in src/records/typed_registry_data.inc")
     p.add_argument("--self-test", action="store_true")
     args = p.parse_args(argv)
     if args.self_test:

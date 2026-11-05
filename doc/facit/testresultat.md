@@ -140,7 +140,7 @@ Alla `associative` och `associative_endpoint_changed`, ASCII och binär, 2000–
 - HDxf: `... 100 AcDbDimension  2=*D1  10=80.0 20=-20.0 ... 70=160`. Alltså nytt block (BLOCK_RECORD `3FF`, BLOCK `400`
   med ~160 grupper), definitionspunkten flyttad från 40 till 80, och 70 från 128 till 160 (bit 32).
 - Följd: `$HANDSEED` 3FF till 40C, nya poster i BLOCK_RECORD-tabellen och BLOCKS.
-- Källa: `src/dxf_writer.cpp:1885` `DxfWriter::generate_dim_blocks` (villkoret
+- Källa: `src/write/dxf_writer.cpp:1885` `DxfWriter::generate_dim_blocks` (villkoret
   `!dim.block_name.empty() && dwg.find_block(...)` på ~rad 1900), anropad från `dxf_writer_2000.cpp:217`. R.7-regeln
   "en DIMENSION utan block får ett `*Dn`" gäller även när AutoCAD själv lämnat den utan block.
 
@@ -156,8 +156,8 @@ Alla `associative` och `associative_endpoint_changed`, ASCII och binär, 2000–
   NOTES_002..005, positionerna får 1 ulp-skillnad (`97.97271937752201` mot `97.972719377522`), och
   DICTIONARY/XRECORD-objekten (`39E`, `3A0`, ... ACAD_MLATT) tas bort. XRECORD `391` får `70=3` (var 4) och
   färre 340.
-- Källa: skrivarsidan `src/dxf_writer_2000.cpp:2181` och `:2203` (`attribute_mirror(...)`), `src/attribute_mirror.cpp:77`
-  `attribute_mirror()` och `attribute_lines()` (en spegel per rad), läsarsidan `src/drawing_attribute.cpp` (rad ~127-302,
+- Källa: skrivarsidan `src/write/dxf_writer_2000.cpp:2181` och `:2203` (`attribute_mirror(...)`), `src/drawing/attribute_mirror.cpp:77`
+  `attribute_mirror()` och `attribute_lines()` (en spegel per rad), läsarsidan `src/drawing/drawing_attribute.cpp` (rad ~127-302,
   ihopslagning av spegelposterna till `MultilineAttribute`). AutoCAD delar en rad vid varje formateringsbyte
   (färgen på "red"), HDxf bevarar inte den uppdelningen och inte posternas handtag/dictionaries.
 
@@ -166,7 +166,7 @@ Alla `associative` och `associative_endpoint_changed`, ASCII och binär, 2000–
 `A RAPIDRT render preset requires DXF 2013 or later`.
 
 - AutoCAD 2025 skriver `RAPIDRTRENDERSETTINGS` och `RAPIDRTRENDERENVIRONMENT` även i 2000–2010-filer (finns i filerna).
-- Källa: `src/drawing.cpp:269-270` i `r2013_property()` (`ObjectType::RapidRtRenderSettings/Environment` räknas som
+- Källa: `src/drawing/drawing.cpp:269-270` i `r2013_property()` (`ObjectType::RapidRtRenderSettings/Environment` räknas som
   "2013-egenskap" oavsett läst version).
 - Med de två raderna borttagna är alla 16 filer byte-identiska.
 
@@ -176,8 +176,8 @@ Alla `associative` och `associative_endpoint_changed`, ASCII och binär, 2000–
 - Post: MULTILEADER `3C9`, svansen `340=3C8 90=263168 170=1 91=-1073741824 171=-2 290 291 ...` har ingen grupp 341
   (linjetypen för ledarlinjen). Nästa MULTILEADER `3CF` har `341=14`.
 - Läsaren lämnar `leader_linetype` tom, skrivaren skriver alltid 341 och slår upp namnet "".
-- Källa: `src/dxf_writer_mleader.cpp:313` (`write_code(341, mleader_reference(... d.leader_linetype ...))`),
-  felet kommer från `src/dxf_writer_2000.cpp:114` `linetype_handle()`; läsning `src/mleader.cpp:196`.
+- Källa: `src/write/dxf_writer_mleader.cpp:313` (`write_code(341, mleader_reference(... d.leader_linetype ...))`),
+  felet kommer från `src/write/dxf_writer_2000.cpp:114` `linetype_handle()`; läsning `src/drawing/mleader.cpp:196`.
 - Med 341 utelämnad när namnet är tomt är alla 12 filer byte-identiska.
 
 ### A5. Binär: grupp 71 i DATATABLE är 32-bitars (12 filer, läsfel)
@@ -188,7 +188,7 @@ Alla `associative` och `associative_endpoint_changed`, ASCII och binär, 2000–
   (`47 00 01 00 00 00` = 71, int32 1; sedan `47 00 00 00 00 00`). `group_value_type(71)` är Int16, så läsaren
   tappar synk (2 byte kvar, nästa kod blir 0 `"G"`, sedan 23552 = 0x5C00 ...) och fastnar på "256".
 - Samma tabell används av skrivaren (`group_io.cpp: write_raw/write_typed`).
-- Källa: `src/group_codes.hpp:32` `group_value_type()` (60-79 = Int16), `src/group_io.cpp:149-224`
+- Källa: `src/io/group_codes.hpp:32` `group_value_type()` (60-79 = Int16), `src/io/group_io.cpp:149-224`
   `GroupReader::read_binary()`. Kodens typ beror här på objekttypen, inte bara koden.
 - Med 71 som Int32 inuti DATATABLE/ACDBDATATABLE (både läsning och skrivning) är alla 12 filer byte-identiska.
 
@@ -199,8 +199,8 @@ Alla `associative` och `associative_endpoint_changed`, ASCII och binär, 2000–
   AutoCAD: `102 {ACAD_XDICTIONARY 360=10F4 102 } 330=1 ... 2=*U30 340=0`. HDxf lägger till
   `102 {BLKREFS 331=292 102 }` (INSERT `292`).
 - AutoCAD listar bara INSERT:ar för `*U43` och `*U44` (`105E`, `3AF`), inte för `*U30..*U42`.
-- Källa: `src/dxf_writer_2000.cpp:343-358` (`collect_inserts` fyller `block_refs_` för varje INSERT), skrivs vid `:1237`,
-  sammanslås med läst post i `src/dxf_writer_template.cpp:582` (`flush`) och `:478-520` (`write_block`: "pekare som
+- Källa: `src/write/dxf_writer_2000.cpp:343-358` (`collect_inserts` fyller `block_refs_` för varje INSERT), skrivs vid `:1237`,
+  sammanslås med läst post i `src/write/dxf_writer_template.cpp:582` (`flush`) och `:478-520` (`write_block`: "pekare som
   postens saknar läggs till").
 
 ### A7. Reaktorer från LEADER/HATCH (12 filer)
@@ -210,7 +210,7 @@ Samma 12 filer som A6.
   (LEADER-posterna med `340=39A`).
 - LWPOLYLINE `39D`: AutoCAD `330=3A0`, HDxf `330=3A0 330=103D 330=1048 330=1053` (HATCH-poster med `330=39D`
   som gränsobjekt). Scale_removed: `330=2645 330=264B` respektive `2665 266E`.
-- Källa: `src/dxf_writer_2000.cpp:347-358` (`reactors_[annotation_handle]` för LEADER, `reactors_[source_handle]`
+- Källa: `src/write/dxf_writer_2000.cpp:347-358` (`reactors_[annotation_handle]` för LEADER, `reactors_[source_handle]`
   för HATCH) och `write_reactors()` `:1378`. AutoCAD 2025:s 2000–2007-export har inte dessa bakåtlänkar för
   annotativa upplösta objekt.
 
@@ -221,13 +221,13 @@ Samma 12 filer som A6.
 - `take_mtext_xdata` kräver `flags == d.background.flags` (16 != 19), så XDATA-blocket tas inte om hand utan ligger kvar
   rått; `mtext_xdata()` skriver dessutom ett nytt block eftersom `90 & 16` (`80=19`, ny LWPOLYLINE `792`). Resultat: dubbelt XDATA-block och en extra
   LWPOLYLINE, `$HANDSEED` 792 till 793.
-- Källa: `src/mtext_data.cpp:227-247` (`take_mtext_xdata`) och `:267-276` (`mtext_xdata`).
+- Källa: `src/text/mtext_data.cpp:227-247` (`take_mtext_xdata`) och `:267-276` (`mtext_xdata`).
 - 2010 har samma XDATA (`80=16`) men `90=3` (utan ramens bit 16): då skriver `mtext_xdata()` inget nytt block och resultatet blir identiskt. Felet uppstår bara när 90 har bit 16 men XDATA-flaggan inte är exakt lika (2013: 19 mot 16).
 
 ## 4. Orsaker R12 (B)
 
 ### B1. `$EXTMIN/$EXTMAX` (56 filer)
-R12-huvudet räknas om (`src/dxf_writer.cpp:139` `compute_extents`, `src/extents.cpp`) och bevaras inte som i 2000+.
+R12-huvudet räknas om (`src/write/dxf_writer.cpp:139` `compute_extents`, `src/geometry/extents.cpp`) och bevaras inte som i 2000+.
 Delorsaker (en fil kan ha flera):
 
 | Del | Filer | Exempel (in = AutoCAD, ut = HDxf) |
@@ -238,8 +238,8 @@ Delorsaker (en fil kan ha flera):
 | 1-ulp/1e-15 | ~14 | `dynamic_blocks_rotation_changed` (ASCII): `157.042866522874192` mot `157.0428665228742204`, binären är lika; `layers_styles`: -1.2e-15 mot -1.3e-15 |
 | 1e20-formatet | 1 ren (`empty`, ASCII) + images | AutoCAD `1.0000000000000000E+20` (16 decimaler), HDxf `1.000000000000000E+20` (15) |
 
-Källor: `src/group_io.cpp:~365` `format_double(NumberStyle::R12)` använder `%.15E` (ska bli 16 decimaler), extents-beräkningen
-i `src/extents.cpp`, `src/text_layout.cpp`, `src/mtext_layout.cpp`.
+Källor: `src/io/group_io.cpp:~365` `format_double(NumberStyle::R12)` använder `%.15E` (ska bli 16 decimaler), extents-beräkningen
+i `src/geometry/extents.cpp`, `src/text/text_layout.cpp`, `src/text/mtext_layout.cpp`.
 
 ### B2. Tabellräknare (70), 42 filer
 R12:s TABLE-huvud har `70` = ett antal AutoCAD håller (inte antalet poster i filen). HDxf skriver antalet poster.
@@ -253,7 +253,7 @@ R12:s TABLE-huvud har `70` = ett antal AutoCAD håller (inte antalet poster i fi
 
 - Tabellen VIEW kan vara tom i filen men ha räknare 10 (AutoCAD räknar bland annat poster som inte skrivs till R12).
   Värdet går inte att räkna ut från filens innehåll. Räknaren läses och kastas.
-- Källa: `src/dxf_writer.cpp:547-550` `write_view_table` (`write_code_int(70, views.size())`) och motsvarande
+- Källa: `src/write/dxf_writer.cpp:547-550` `write_view_table` (`write_code_int(70, views.size())`) och motsvarande
   `write_*_table` för STYLE/DIMSTYLE/LTYPE.
 
 ### B3. Extrusion före geometrin (28 filer)
@@ -261,7 +261,7 @@ LINE (22 filer), SOLID (6), CIRCLE (4), ARC (4).
 
 - LINE `316` (layouts): AutoCAD `5 8 10 20 30 11 21 31 210 220 230`, HDxf `5 8 210 220 230 10 20 30 11 21 31`.
   ARC: AutoCAD `... 40 210 220 230 50 51`, HDxf `210 220 230 10 ...`. CIRCLE: `40 210 220 230`. SOLID: `... 13 23 33 210 220 230`.
-- Källa: `src/dxf_writer.cpp:953-959` i `write_common_entity_codes()` (anropas före geometrin av `write_line`, `write_circle`,
+- Källa: `src/write/dxf_writer.cpp:953-959` i `write_common_entity_codes()` (anropas före geometrin av `write_line`, `write_circle`,
   `write_arc`, `write_solid` ...). 2000+ är ok (annan skrivare).
 
 ### B4. Lager före handtag i AutoCAD:s polylinjer (24 filer)
@@ -269,7 +269,7 @@ AutoCAD:s R12-export skapar POLYLINE (70=8), VERTEX (70=32) och SEQEND för type
 15 980 VERTEX i ASCII-filerna har ordningen `0 VERTEX 8 0 5 2D1 10 ...`, medan vanliga (egna) polylinjer har `5, 8`.
 
 - Exempel: VERTEX `2D1`, SEQEND `3E4`, POLYLINE `343`: in `8=0 5=343`, ut `5=343 8=0`.
-- Källa: `src/dxf_writer.cpp:1160-1231` `write_polyline()` (handtag före lager för POLYLINE/VERTEX/SEQEND). Posterna
+- Källa: `src/write/dxf_writer.cpp:1160-1231` `write_polyline()` (handtag före lager för POLYLINE/VERTEX/SEQEND). Posterna
   har ingen markering som skiljer dem från egna polylinjer.
 
 ### B5. 6 värdesiffror i ASCII (12 filer, bara ASCII)
@@ -277,22 +277,22 @@ Samma polylinjer: ASCII-filens VERTEX/POLYLINE-koordinater har `%#.6g`-format (`
 Den binära filen har full precision, så HDxf läser `169.813` och skriver `169.8129999999999882`.
 
 - Filer: annotative (2), associative (2), basic, dimensions, hatch (3), solids (2), surfaces.
-- Källa: `src/group_io.cpp:~365` `format_double` + `write_polyline` (ingen hänsyn till AutoCAD:s 6-siffrors format för dessa poster).
+- Källa: `src/io/group_io.cpp:~365` `format_double` + `write_polyline` (ingen hänsyn till AutoCAD:s 6-siffrors format för dessa poster).
 
 ### B6. POLYLINE:s 10/20/30 (18 filer)
 - `basic` POLYLINE `272`: AutoCAD `10=170.0 20=73.0 30=0.0 66=1 70=8`; HDxf `66=1 10=0.0 20=0.0 30=0.0 70=8`.
   `solids` POLYLINE `40B`: in `10=112.412 20=73.0193 30=20.431`, ut `0.0 0.0 20.431`.
 - Två skillnader: AutoCAD skriver 10/20/30 före 66, och x,y behålls (vid 3D-polylinje); HDxf skriver 66 först och x,y = 0.
-- Källa: `src/dxf_writer.cpp:1167-1171` (`write_code_int(66,1); write_code_double(10,0.0); (20,0.0); (30, elevation)`).
+- Källa: `src/write/dxf_writer.cpp:1167-1171` (`write_code_int(66,1); write_code_double(10,0.0); (20,0.0); (30, elevation)`).
   Modellen (`PolylineData`) har bara `elevation`, så x,y förloras vid läsning.
 
 ### B7. VERTEX/SEQEND:s 6 och 62 (10 filer)
 - VERTEX `2DB` (layers_styles, i block): `6=BYBLOCK 62=0` borta; SEQEND `2DD` samma. `annotative`: VERTEX `8AA`, SEQEND `8AC` `6=BYBLOCK`.
 - Källa: `write_polyline` skriver VERTEX/SEQEND med polylinjens lager, utan egen linjetyp/färg
-  (`src/dxf_writer.cpp:1195-1230`), och läsaren sparar inte VERTEX:s egenskaper.
+  (`src/write/dxf_writer.cpp:1195-1230`), och läsaren sparar inte VERTEX:s egenskaper.
 
 ### B8. VERTEX:s 40/41 och XDATA (2 filer, `basic`)
-- VERTEX `2CF`: `40=0.0 41=0.0` (explicita nollbredder) tappas; `src/dxf_writer.cpp:1206-1211` skriver bredder bara om != 0.
+- VERTEX `2CF`: `40=0.0 41=0.0` (explicita nollbredder) tappas; `src/write/dxf_writer.cpp:1206-1211` skriver bredder bara om != 0.
 - VERTEX `258`: `1001 HDXF_FACIT 1000 vertex 1070 7` (XDATA på VERTEX) tappas. Det är dataförlust, inte bara formatering.
   `write_polyline` skriver XDATA bara för POLYLINE (rad ~1190), inte för VERTEX.
 
@@ -302,33 +302,33 @@ Den binära filen har full precision, så HDxf läser `169.813` och skriver `169
 - `70`: AutoCAD utelämnar `70=0` (`604`), HDxf skriver alltid 70.
 - `16/26/36`: HDxf skriver punkt 16 (=0) för vinkelmått (typ 5, `297`, `636`), AutoCAD inte.
 - `40=0.0` på radie/diameter (`2FC`, `312`, `64F`): AutoCAD behåller, HDxf tappar.
-- Källa: `src/dxf_writer.cpp:1581-1670` `write_dimension()` (kommentaren på raden `write_code(3, d.dim_style)` hänvisar till R12-referensens
+- Källa: `src/write/dxf_writer.cpp:1581-1670` `write_dimension()` (kommentaren på raden `write_code(3, d.dim_style)` hänvisar till R12-referensens
   ordning; AutoCAD 2025 gör annorlunda).
 
 ### B10. VIEW-post (8 filer)
 `layers_styles` (4), `render_modeldoc` (4). Post `HDXF_RENDER`: AutoCAD `70 40 10 20 41 11 ...`, HDxf `70 40 41 10 20 11 ...`.
-Källa: `src/dxf_writer.cpp:547-566` `write_view_table()` (41 före 10/20).
+Källa: `src/write/dxf_writer.cpp:547-566` `write_view_table()` (41 före 10/20).
 
 ### B11. `$PEXTMIN/$PEXTMAX` (5 filer)
 - `layouts` (2): `$PEXTMAX` y `190.0586630286494` mot `185.0` (pappersrummets text/objekt räknas olika).
 - `dimensions`, `solids`, `solids_solid_rotated` (alla ASCII): `$PEXTMIN` `1.1692913385826771 / 0.8267716535433073` mot
   `...778 / ...074`. Binärfilerna är lika.
-- Källa: `src/dxf_writer.cpp:139-170` `compute_extents`.
+- Källa: `src/write/dxf_writer.cpp:139-170` `compute_extents`.
 
 ### B12. XDATA på ATTRIB i INSERT dubbleras (4 filer: `annotative*`)
 - ATTRIB `748`, `75C`, `76F` i blocket `*U44`: XDATA `1001 ACADMATTDEFINANNOBLOCKDECO ...{ 1070 1 1070 1 }` kommer ut två gånger.
   Läsaren har bara en lista.
-- Källa: `src/dxf_writer.cpp:1386` (`write_insert`: `write_xdata(attr.props.xdata)` efter `write_attrib(...)`) och
+- Källa: `src/write/dxf_writer.cpp:1386` (`write_insert`: `write_xdata(attr.props.xdata)` efter `write_attrib(...)`) och
   `write_attrib()` rad ~1468 (`write_xdata(attr.props.xdata)`). Samma lista skrivs i båda.
 
 ### B13. INSERT med skala 1.0 (2 filer, ASCII: `associative`, `associative_endpoint_changed`)
 INSERT `2B3` (`*U5`, i block): AutoCAD `... 30=0.0 41=1.0 42=1.0 43=1.0 50=74.99`, HDxf utan 41/42/43 (standardvärden utelämnas).
-Källa: `write_insert` i `src/dxf_writer.cpp:~1340`.
+Källa: `write_insert` i `src/write/dxf_writer.cpp:~1340`.
 
 ### B14. TEXT i dimensionsblock (2 filer, `dimensions`)
 TEXT `594`/`595` i `*D`-block: AutoCAD `0 TEXT 8 0 40 0.18 5 594 62 0 72 0 71 0 10 134.719 20 19.5427 30 0.00000 1 ...`
 (egen ordning, explicit 72/71=0, 6 siffror); HDxf `5 8 62 10 20 30 40 1`. Dimensionsblock som AutoCAD byggt vid exporten
-läses som vanliga TEXT och skrivs i vanlig ordning. Källa: `write_text` i `src/dxf_writer.cpp`.
+läses som vanliga TEXT och skrivs i vanlig ordning. Källa: `write_text` i `src/write/dxf_writer.cpp`.
 
 ## 5. Filer per orsak, R12 (kombinationer)
 

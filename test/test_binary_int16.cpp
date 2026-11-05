@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "type_version_matrix.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
+#include "io/group_io.hpp"
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>

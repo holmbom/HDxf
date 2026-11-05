@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
 #include "typed_corpus.hpp"
-#include "TypedRecordTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>

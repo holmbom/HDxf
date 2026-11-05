@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "dxf_reader.hpp"
+#include "read/dxf_reader.hpp"
 #include <cmath>
 #include <filesystem>
 #include <fstream>

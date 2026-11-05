@@ -1,7 +1,7 @@
 #pragma once
 
 #include "hdxf.hpp"
-#include "TableLayout.hpp"
+#include "records/TableLayout.hpp"
 #include "typed_corpus.hpp"
 #include <algorithm>
 #include <cmath>

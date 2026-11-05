@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "extents.hpp"
+#include "geometry/extents.hpp"
 #include <cmath>
 #include <cstdio>
 #include <filesystem>

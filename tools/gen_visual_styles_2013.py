@@ -1,4 +1,4 @@
-# Generates the data in src/drawing_r2013.cpp (between the "generated" markers): AutoCAD's
+# Generates the data in src/drawing/drawing_r2013.cpp (between the "generated" markers): AutoCAD's
 # VISUALSTYLE records of a new drawing saved as 2013 — the groups after each record's subclass
 # marker and its XDATA (2013 has no extension dictionary or round-trip XRECORD) — from jscad's
 # empty2013.dxf (AutoCAD 2017, pinned in test/data/manifest.cmake). Plan phase 5, B59.

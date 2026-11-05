@@ -1,8 +1,8 @@
-# Generates src/code_pages.cpp: the code pages AutoCAD names in $DWGCODEPAGE, as tables of
+# Generates src/io/code_pages.cpp: the code pages AutoCAD names in $DWGCODEPAGE, as tables of
 # Unicode code points — Windows' own mappings (MultiByteToWideChar), which AutoCAD uses, so
 # the Windows extensions (CP936 0x80 = euro, the private-use areas of 936/950 …) are in.
 # A page Windows does not have (ISO8859-10) comes from the Unicode consortium's mapping
-# (Python's codec). Run on Windows: py -I tools/gen_code_pages.py src/code_pages.cpp
+# (Python's codec). Run on Windows: py -I tools/gen_code_pages.py src/io/code_pages.cpp
 import ctypes
 
 _kernel32 = ctypes.windll.kernel32

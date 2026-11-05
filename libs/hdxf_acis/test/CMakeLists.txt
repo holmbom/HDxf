@@ -1,5 +1,5 @@
 # hdxf_acis tests. They use HDxf's test framework and, to look inside what was built, HDxf's internal
-# ACIS reader (src/acis.hpp): the test target alone has those include paths; the library does not.
+# ACIS reader (src/geometry/acis.hpp): the test target alone has those include paths; the library does not.
 add_executable(hdxf_acis_tests
     main.cpp
     test_support.cpp

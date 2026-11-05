@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "dxf_structure.hpp"
 #include "hdxf.hpp"
-#include "text_encoding.hpp"
+#include "io/text_encoding.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>

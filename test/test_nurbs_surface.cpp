@@ -2,7 +2,7 @@
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "TypedRecordTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
 #include <algorithm>
 #include <filesystem>
 #include <map>

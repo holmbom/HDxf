@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(HDXF
-    VERSION 1.9.2
+    VERSION 1.9.3
     DESCRIPTION "C++ library for reading, writing and manipulating DXF files"
     LANGUAGES CXX
 )
@@ -59,7 +59,7 @@ else()
 endif()
 option(HDXF_INSTALL "Generate install rules and the hdxf CMake package" ${HDXF_INSTALL_DEFAULT})
 
-# The installed package has the libraries and the public headers (include/hdxf.hpp, and hdxf_acis.hpp with
+# The installed package has the libraries and the public headers (include/hdxf.hpp and include/hdxf/, and hdxf_acis.hpp with
 # the ACIS builder); the internal headers under src/ are not installed. The targets are hdxf::hdxf and
 # hdxf::acis, the same names as the aliases in a source build.
 if(HDXF_INSTALL)
@@ -68,6 +68,7 @@ if(HDXF_INSTALL)
 
     set(hdxf_install_targets hdxf)
     install(FILES include/hdxf.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(DIRECTORY include/hdxf DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
     if(HDXF_BUILD_ACIS)
         set_target_properties(hdxf_acis PROPERTIES EXPORT_NAME acis)
         list(APPEND hdxf_install_targets hdxf_acis)

@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
+#include "io/group_io.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>

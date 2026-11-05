@@ -3,10 +3,12 @@
 # HDxf
 
 C++-bibliotek för att läsa, skriva och bearbeta DXF-filer.
-Version 1.9.2 — läser DXF R12 … 2018, skriver R12, R13, R14, 2000, 2004, 2007, 2010, 2013 och 2018 (R12 verifierat
+Version 1.9.3 — läser DXF R12 … 2018, skriver R12, R13, R14, 2000, 2004, 2007, 2010, 2013 och 2018 (R12 verifierat
 i AutoCAD, 2000 och 2004 i DWG TrueView och ODA, 2007 … 2018 i ODA och AutoCAD:s kärna).
 Alla strängar är UTF-8 (sedan 1.1.0, se
 [Teckenkodning](#teckenkodning)). Filsökvägar är UTF-8-säkra i Windows.
+1.9.3: biblioteket byggt för felsökning är hälften så stort (2,1 → 1,0 GB med GCC på MinGW): `hdxf.hpp` tar in delar i
+`include/hdxf/`, och `src` är uppdelad i kataloger. API:et är oförändrat, och ett program tar fortfarande in bara `hdxf.hpp`.
 1.9.2: sparning som aldrig fastnar på solider eller nästlade block, och snabbare öppning; osynliga entiteter räknas inte i utbredningen,
 som skrivs när geometrin i en läst ritning ändrats; inget tak på blockdjup; VERTEX och SEQEND följer sin POLYLINE; proxyposter med
 AutoCAD:s extra byte läses typade; 16-bitarsvärden utanför sitt intervall skrivs som AutoCAD skriver dem, med en varning.
@@ -33,7 +35,7 @@ fynden i Codex-granskningen av 1.7.0 är rättade (kodsidsbyte, $HANDSEED, MLINE
 - **Skriva tillbaka det som lästs** — en ritning som lästs från DXF 2000, 2004, 2007, 2010, 2013 eller 2018 skrivs ur
   sina bevarade poster, och bara det som ändrats skrivs på nytt (se
   [Skriva DXF 2000](#skriva-dxf-2000))
-- **Ett enda header-bibliotek** — inkludera bara `hdxf.hpp`
+- **En enda header att ta in** — inkludera bara `hdxf.hpp`
 - **Inga beroenden** — bara C++:s standardbibliotek (C++20)
 - **Rundturssäkert** — okända entiteter och objekt, och en post som en kodek inte kan läsa, bevaras som råa gruppkoder
 - **UTF-8 överallt** — varje `$DWGCODEPAGE` som AutoCAD använder (ANSI, DOS, ISO 8859, Macintosh
@@ -479,7 +481,7 @@ Till och med 1.8.1 behöll HDxf det mesta av det AutoCAD skriver utöver de grun
 | Annotering | annoteringskontexter, DIMASSOC, särskilda mått (ARC_DIMENSION, LARGE_RADIAL_DIMENSION) |
 | Tillägg | poster från AutoCAD Map, TurboCAD och ZWM |
 
-Varje typad posttyp är en kodek i typregistret (`src/typed_registry_data.inc`, rapporten
+Varje typad posttyp är en kodek i typregistret (`src/records/typed_registry_data.inc`, rapporten
 `doc/facit/fas9_register.md`). En kodek läser posten, skriver en ny, skriver en post vars bevarade form
 rensats och slår ihop en ändrad post med den bevarade, så att det som inte ändrats behåller filens text (som för
 varje post sedan 1.2.0). Ägare, reaktorer, lexikon och de övriga relationerna följer det som tas bort eller läggs till;
@@ -650,7 +652,7 @@ include(FetchContent)
 FetchContent_Declare(
     hdxf
     GIT_REPOSITORY https://github.com/holmbom/HDxf.git
-    GIT_TAG v1.9.2
+    GIT_TAG v1.9.3
 )
 FetchContent_MakeAvailable(hdxf)
 
@@ -673,7 +675,7 @@ Välj paketet för din kompilator: statiska C++-bibliotek går inte att blanda m
 ## Kända fel
 
 - **MSVC:** ett prov faller — `dxf_unicode.dxf` i korpusen för material och visuella stilar skrivs inte tillbaka som
-  den lästes när dess poster skrivs ur de typade värdena. GCC (MinGW och Linux) går igenom. Rättas i 1.9.2.
+  den lästes när dess poster skrivs ur de typade värdena. GCC (MinGW och Linux) går igenom. Ännu inte rättat.
 
 ## Författare
 

@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "extents.hpp"
-#include "group_io.hpp"
+#include "geometry/extents.hpp"
+#include "io/group_io.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cmath>

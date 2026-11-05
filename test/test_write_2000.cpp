@@ -1,8 +1,8 @@
 #include "test_framework.hpp"
 #include "test_drawing_builder.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
-#include "handles.hpp"
+#include "io/group_io.hpp"
+#include "io/handles.hpp"
 #include "dxf_structure.hpp"
 #include <cmath>
 #include <filesystem>

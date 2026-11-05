@@ -100,7 +100,7 @@ En minimal R12-fil utan `TABLES` och `BLOCKS` får dem tillagda vid sparning och
 AutoCAD sparat har sektionerna.
 
 Konstanter i källkoden som kan se ut som tak är beräkningsgränser och begränsar inte data: `refined.size() < 20000`,
-`depth >= 80`, `out.size() >= 65536` och `pops < 100000` i `src/acis_extents.cpp`, `kMaxFaces` i `src/mesh.cpp`
+`depth >= 80`, `out.size() >= 65536` och `pops < 100000` i `src/geometry/acis_extents.cpp`, `kMaxFaces` i `src/geometry/mesh.cpp`
 (AutoCAD:s `SMOOTHMESHMAXFACE`), `kMaxDegree` 32 för ACIS-kurvor (ett högre gradtal gör att kroppen inte räknas in i
 utbredningen), och djupgränsen 16 för typsnittsformer, fält och sammansatta kurvor.
 
@@ -133,7 +133,7 @@ ASCII med prototyperna, vid halva filstorleken, men inte snabbare.
 
 `DxfWriter::compute_extents` körs vid varje sparning. I en läst 2000+-ritning används resultatet aldrig
 (`write_header_template` skriver utbredningen bara för R12), så beräkningen är bortkastad. Den fastnar på ritning A av sex
-orsaker, alla i `src/acis_extents.cpp` och `src/extents.cpp`:
+orsaker, alla i `src/geometry/acis_extents.cpp` och `src/geometry/extents.cpp`:
 
 1. **Exponentiell förgrening vid en pol.** En spline-yta som dras ihop till en punkt har ingen entydig uv där. Inversionen
    hoppar mellan olika u (uppmätt 0,33 och 0,47 med parameteravstånd 10⁻¹¹, ned till 10⁻¹⁷). `FaceRegion::refine` stannar bara
@@ -198,7 +198,7 @@ Två delfel:
 ### 3. Proxy-objekt går inte att läsa typade
 
 AutoCAD skriver `bits/8 + 1` byte i grupp 310/311 när bitantalet i 161/162 är jämnt delbart med 8 och större än noll.
-`bytes_for` i `src/proxy_record.cpp` kräver `(bits + 7) / 8`, så posten underkänns och blir otypad med en varning. Uppmätt i
+`bytes_for` i `src/records/proxy_record.cpp` kräver `(bits + 7) / 8`, så posten underkänns och blir otypad med en varning. Uppmätt i
 en fil: alla 384 poster med jämnt delbart bitantal över noll följer regeln, och 4 med 0 bitar har 0 byte. Den extra byten är
 oftast `00`, ibland annat (`CC`, `FF`). Antal varningar över alla filer: 7 144, 152–371 per fil. Prototypen ger 0 varningar
 och fortsatt byte-identiska filer.
@@ -252,7 +252,7 @@ Orsaker, från de största:
 - **`istream` tecken för tecken i binärt:** `in.get` per tecken i strängar, sentry per värde.
 - **`preserved_handles` packar upp allt:** `RawRecord::groups()` bygger en hel vektor med strängar per post, bara för att
   hitta handtaget som står först.
-- **Polylinjen kopieras:** `entity.data = d` kopierar alla hörn. Det finns på 17 ställen i `src/dxf_reader.cpp`. Kopian klipper
+- **Polylinjen kopieras:** `entity.data = d` kopierar alla hörn. Det finns på 17 ställen i `src/read/dxf_reader.cpp`. Kopian klipper
   dock vektorns överkapacitet: med `std::move` steg minnestoppen från 810 till 1 061 MB, så flytten behöver kombineras med
   rätt kapacitet.
 - **Många små allokeringar:** `RawRecord::append` växer strängen flera gånger per post. Gissningsvis huvuddelen av den tid gprof

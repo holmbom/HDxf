@@ -2,7 +2,7 @@
 
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "TypedRecordTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
 #include <cstdio>
 #include <filesystem>
 #include <fstream>

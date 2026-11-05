@@ -1,6 +1,6 @@
 #include "test_support.hpp"
 
-#include "acis_sab.hpp"
+#include "geometry/acis_sab.hpp"
 
 using namespace acis_test;
 using hdxf_test::assert_eq;

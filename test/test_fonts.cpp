@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "fonts.hpp"
-#include "group_io.hpp"
+#include "text/fonts.hpp"
+#include "io/group_io.hpp"
 #include <cmath>
 #include <filesystem>
 #include <fstream>

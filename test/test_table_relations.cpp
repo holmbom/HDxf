@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "TableTypes.hpp"
+#include "records/TableTypes.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>

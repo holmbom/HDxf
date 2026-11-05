@@ -5,7 +5,7 @@
 //   hdxf_acis_inspect_sat <file.dxf | file.sat> [body number]
 //
 
-#include "acis.hpp"
+#include "geometry/acis.hpp"
 #include "hdxf.hpp"
 
 #include <fstream>

@@ -2,8 +2,8 @@
 #include "table_facit.hpp"
 #include "type_version_matrix.hpp"
 #include "hdxf.hpp"
-#include "TableLayout.hpp"
-#include "extents.hpp"
+#include "records/TableLayout.hpp"
+#include "geometry/extents.hpp"
 #include <cmath>
 #include <filesystem>
 #include <set>

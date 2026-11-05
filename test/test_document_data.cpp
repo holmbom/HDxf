@@ -2,9 +2,9 @@
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "TypedRecordTypes.hpp"
-#include "DocumentDataTypes.hpp"
-#include "TableTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
+#include "records/DocumentDataTypes.hpp"
+#include "records/TableTypes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

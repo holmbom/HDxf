@@ -1,8 +1,8 @@
 #include "test_framework.hpp"
 #include "test_drawing_builder.hpp"
 #include "hdxf.hpp"
-#include "dxf_reader.hpp"
-#include "group_io.hpp"
+#include "read/dxf_reader.hpp"
+#include "io/group_io.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>

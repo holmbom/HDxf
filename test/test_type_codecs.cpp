@@ -2,9 +2,9 @@
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "TypedRecordTypes.hpp"
-#include "dxf_writer.hpp"
-#include "group_io.hpp"
+#include "records/TypedRecordTypes.hpp"
+#include "write/dxf_writer.hpp"
+#include "io/group_io.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>

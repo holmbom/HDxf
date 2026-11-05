@@ -2,8 +2,8 @@
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
-#include "TypedRecordTypes.hpp"
+#include "io/group_io.hpp"
+#include "records/TypedRecordTypes.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

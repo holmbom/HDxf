@@ -5,7 +5,7 @@ HDXF is a C++ library for reading, writing, and manipulating DXF (Drawing Exchan
 The library supports the full DXF standard including 2D and 3D entities, text, colors, layers,
 blocks, styles, and all standard DXF sections. Both ASCII and Binary DXF formats are supported.
 
-**Version: 1.9.2 — reads R12 … 2018 (AC1009–AC1032, ASCII and binary), writes R12, R13, R14, 2000,
+**Version: 1.9.3 — reads R12 … 2018 (AC1009–AC1032, ASCII and binary), writes R12, R13, R14, 2000,
 2004, 2007, 2010, 2013 and 2018. Phases 0–7 and 9 of the multi-version work (TODO.md) are done; phase 8 remains.**
 R12: all 14 entity types, 8 table types, header variables, blocks, attributes, dimensions,
 viewports, XDATA, and both ASCII/Binary formats pass AutoCAD validation. 2000: the R12
@@ -21,7 +21,7 @@ Swedish. `.github/workflows/release.yml` builds the prebuilt packages (MSVC, Min
 tag `vX.Y.Z`; `HDXF_INSTALL` gives `cmake --install` and the CMake package `find_package(hdxf)`.
 
 ## Architecture
-- Single public header: `include/hdxf.hpp`
+- A program includes one header, `include/hdxf.hpp`, which takes in the parts in `include/hdxf/` (see "Header parts")
 - `Drawing` class as the main facade — all operations go through it
 - Entities use `std::variant` (value types, no inheritance/pointers)
 - Internal headers in `src/` are not exposed to users
@@ -41,10 +41,19 @@ HDXF/
 ├── TODO.md                # Multi-version plan: phases 0–9 (0–7 and 9 done, 8 remains)
 ├── CMakeLists.txt         # Root CMake configuration
 ├── include/
-│   └── hdxf.hpp           # Single public header (all public API)
+│   ├── hdxf.hpp           # The header a program includes: takes in every part, and has struct Version
+│   └── hdxf/              # The parts: core, fwd, boxed, entity*, table, tables, object, objects_*, drawing, ecs
 ├── src/
 │   ├── CMakeLists.txt     # Library build
-│   └── *.cpp/hpp          # Implementation files (internal)
+│   ├── core/              # EntityData's and ObjectData's copying, moving and destruction; the ACI palette
+│   ├── io/                # Group codes, text encoding, the ACDSDATA section
+│   ├── read/              # Reader
+│   ├── write/             # Writer
+│   ├── drawing/           # Drawing and its version specifics
+│   ├── records/           # Record types: one codec per type, reading and writing in one file
+│   ├── geometry/          # Extents, ACIS, mesh, surfaces
+│   ├── graphics/          # Proxy graphics, dimension blocks
+│   └── text/              # Fonts, text layout
 ├── libs/
 │   └── hdxf_acis/         # ACIS body builder (own CMakeLists, include/, src/, test/, tools/)
 ├── test/
@@ -61,6 +70,26 @@ HDXF/
 ```
 Autodesk's DXF references (R12, 2005 … 2014, 2018) are not in the repository; they are on Autodesk's
 site and are cited by version and page.
+
+## Header parts
+`std::variant` with its alternatives writes the whole list in the name of every level, into the debug information of every file
+that has the type and into the symbol names of every helper it instantiates. So:
+- A file in `src/` includes only the parts of `include/hdxf/` the compiler requires, written `"hdxf/entity.hpp"`; internal
+  headers are `"write/dxf_writer.hpp"`, with `src/` on the include path. Only `src/core/hdxf.cpp`, `object_data.cpp` and
+  `object_data_visit.hpp` take in `hdxf.hpp`.
+- `fwd.hpp` declares every struct and scoped enum outside `core.hpp` and `boxed.hpp`: a header that only passes a type by
+  reference declares nothing more. `drawing.hpp` holds its entities, tables and objects by name alone.
+- `EntityData` and `ObjectData` are structs deriving from `std::variant`. Their copying, moving, destruction, `index()` and
+  `held()` are in `src/core/entity_data.cpp` and `object_data.cpp`, compiled `-O2 -g0`. In `src/`, use `data.get<T>()` and
+  `data.get_if<T>()`; `std::get`, `std::get_if`, `std::holds_alternative` and `std::visit` work for a program as on any variant.
+- A type a variant boxes is only declared in `entity.hpp` / `object.hpp`, and defined in `entity_*.hpp`, `table.hpp` or
+  `objects_*.hpp`. Code in those two headers must not need it complete: that goes to `entity_data.cpp` / `object_data.cpp`
+  (`Entity::dimension_part()`, `Object::as_view_style()`). What a variant holds directly must be complete before it
+  (`objects_base.hpp`, `entity.hpp`).
+- New type: declare it in `fwd.hpp`, define it in its family's part. New part: add it to `hdxf.hpp`; `CMakeLists.txt` installs
+  the directory.
+- `requires { x.member; }` on a type that is only declared compiles and says no. A file that asks what a data type has must
+  see it complete; `src/core/object_data_visit.hpp` takes in all of `hdxf.hpp` for its visitors.
 
 ## Building
 
@@ -108,7 +137,7 @@ include(FetchContent)
 FetchContent_Declare(
     hdxf
     GIT_REPOSITORY https://github.com/holmbom/HDxf.git
-    GIT_TAG v1.9.2
+    GIT_TAG v1.9.3
 )
 FetchContent_MakeAvailable(hdxf)
 
@@ -119,11 +148,11 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
 - File paths are `std::filesystem::path` — never `std::string`. A narrow
   `std::ifstream(std::string)` goes to `fopen` and is ANSI-interpreted on Windows, so
   non-ASCII paths are lost. Use `hdxf::path_from_utf8()` / `hdxf::utf8_from_path()`
-  (both in `include/hdxf.hpp`) when converting to and from UTF-8 `std::string` —
+  (both in `include/hdxf/core.hpp`) when converting to and from UTF-8 `std::string` —
   `fs::path(str)` / `.string()` are UTF-8 only on libstdc++
 - Every string in the API is UTF-8 (plan B1, since 1.1.0). The reader decodes
   `$DWGCODEPAGE` (≤ 2004) / UTF-8 (2007+), `\U+XXXX` and ASCII caret notation (`^J`);
-  the writer encodes back (`src/text_encoding.cpp`). Records preserved from 2000+ files
+  the writer encodes back (`src/io/text_encoding.cpp`). Records preserved from 2000+ files
   (`RawRecord`) keep the bytes as written
 - `Drawing::warnings()` lists what a successful load/save had to change or could not do (e.g.
   a font not found); cleared by every I/O call like `last_error()`. A character above U+FFFF
@@ -164,7 +193,7 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   2004 or 2007 is written only as that version. What only 2007 has fails as older with
   `"<what> requires DXF 2007 or later"` (materials, visual styles, MTEXT's defined height, new
   surfaces …). MULTILEADER (`Boxed<MLeaderData>`) and MLEADERSTYLE are typed and written in
-  2000/2004/2007 with AutoCAD's proxy graphics (`src/mleader_graphics.cpp`); `add_mleader()` /
+  2000/2004/2007 with AutoCAD's proxy graphics (`src/graphics/mleader_graphics.cpp`); `add_mleader()` /
   `add_mleader_block()` place the content as AutoCAD. Surfaces (`SurfaceData`, written anew only
   in 2007) and HELIX (`HelixData`) are typed; their extents are AutoCAD's (ACIS, the helix's
   polyline). TrueType text height is the top of the glyph "A" (R.8 corrected in 3.4)
@@ -174,7 +203,7 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   `"<what> requires DXF 2010 or later"` (IMAGE's `clip_inside`, DIMTXTDIRECTION, vertical
   MULTILEADER text, a leader line's own properties, hatch spline fit data, GEODATA v2/v3).
   MESH (`Boxed<MeshData>`, `add_mesh()`) is typed and written in 2000 … 2010; its extents and
-  proxy graphics follow AutoCAD's smoothing (`src/mesh.cpp`, Catmull-Clark with AutoCAD's crease
+  proxy graphics follow AutoCAD's smoothing (`src/geometry/mesh.cpp`, Catmull-Clark with AutoCAD's crease
   rules, B49). GEODATA (`GeoDataData`, `set_geodata()`) is typed in its three versions.
   `MLeaderLine` has the 2010 line properties typed (`newer_groups` is gone). Characters above
   U+FFFF are written as two `\U+` surrogate escapes in every version (B55). IMAGE gets
@@ -183,12 +212,12 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   with the version deciding what differs; `Drawing(DxfVersion::R2013)`. A drawing read from
   2013 is written only as 2013 (ACadSharp's sample byte for byte). Typed: `$REQUIREDVERSIONS`,
   `Layer::pointer_348`, the linetype's upright (74 bit 8), `MLeaderStyleData::text_extended`
-  (298), `AcisData::guid` (290/2) and the section ACDSDATA (`src/acds.cpp`,
-  `src/dxf_writer_acds.cpp`: `AcisData::sab`, `LayoutData::thumbnail`, `View::thumbnail`; no
+  (298), `AcisData::guid` (290/2) and the section ACDSDATA (`src/io/acds.cpp`,
+  `src/write/dxf_writer_acds.cpp`: `AcisData::sab`, `LayoutData::thumbnail`, `View::thumbnail`; no
   longer in `raw_sections()`). ACIS in 2013 is SAB 21800: a body with SAT lines (any version
-  1.0 … 21800) is written as AutoCAD writes it (`src/acis_sab.cpp`, B62/B63; AutoCAD's own SAB
+  1.0 … 21800) is written as AutoCAD writes it (`src/geometry/acis_sab.cpp`, B62/B63; AutoCAD's own SAB
   record for record, MASSPROP as AutoCAD's). 2013's properties go in 2000 … 2010 as AutoCAD
-  writes them (round-trip XRECORDs, XDATA `ACAD_OBJECT_CHANGE_GUID`; `src/drawing_roundtrip.cpp`,
+  writes them (round-trip XRECORDs, XDATA `ACAD_OBJECT_CHANGE_GUID`; `src/drawing/drawing_roundtrip.cpp`,
   B60). What only 2013 has fails as older (`"... requires DXF 2013 or later"`: a body with only
   SAB, LAYER 348, GEODATA v3). A record written anew keeps what AutoCAD's has (5.9): the reactors
   as read (`EntityProperties::reactors`, `DimStyle::reactors`), extension dictionaries and XDATA
@@ -200,12 +229,12 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   `$ACADMAINTVER` is `90` (`maintenance_as_written()`), `$REQUIREDVERSIONS` int64. `101 Embedded
   Object` after the parent's fields: MTEXT columns (`MTextData::columns`, `MTextColumns`,
   `MTextEmbedded`; before 2018 XDATA `ACAD_MTEXT_COLUMN_INFO` + linked MTEXT + frame
-  LWPOLYLINEs, `src/mtext_data.cpp`, `drawing_mtext.cpp`) and multiline ATTRIB/ATTDEF
+  LWPOLYLINEs, `src/text/mtext_data.cpp`, `drawing_mtext.cpp`) and multiline ATTRIB/ATTDEF
   (`MultilineAttribute`; before 2018 XRECORD `ACAD_MLATT`/`ACAD_MATT_HEIGHT` + the TEXT mirror,
   `drawing_attribute.cpp`, `attribute_mirror.cpp`); an embedded part HDxf does not type stays in
   `RawRecord`. `ModelDocViewStyleData` (DETAIL/SECTION view styles, `drawing_object_fields.cpp`),
   coordination model + NAVISWORKSMODELDEF + RAPIDRT settings/environment (`dxf_writer_reference.cpp`,
-  B78, as the reference). ACIS: SAT → SAB 22300 (`sab_format_for()`, `src/acis_sab.cpp`); a read SAB is
+  B78, as the reference). ACIS: SAT → SAB 22300 (`sab_format_for()`, `src/geometry/acis_sab.cpp`); a read SAB is
   written with its bytes. `OptionalBoxed<T>` keeps `sizeof(Entity)` (B84). No golden files, and
   a facit is only a file AutoCAD saved (Erik, 2026-10-25); what has none is listed in the plan
 - DXF R13 and R14 (fas 7, 1.8.0, plan `doc/plans/2026-10-25-fas-7-dxf-r13-r14.md`, B86–B99, format in
@@ -217,7 +246,7 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   a read file keeps its family (A2000 = AutoCAD 2002–2005 saving as R13/R14, with 330) and is written back byte for
   byte (B12). R14: LWPOLYLINE, HATCH, IMAGE native; R13: they fail as `"<TYPE> requires DXF R14 or later"`. ACIS:
   SAT 100–106 (ACIS 1.0–1.6), no SAB. Names: at most 31 characters, A–Z, digits, `$ _ -` (`$EXTNAMES` 0). What
-  R13/R14 cannot hold fails before anything changes (`target_version_error()`, `src/older_checks.cpp`). Converting a
+  R13/R14 cannot hold fails before anything changes (`target_version_error()`, `src/drawing/older_checks.cpp`). Converting a
   read drawing to another version is phase 8; the typing of the records kept as read was phase 9 (1.9.0, below)
 - R12 read from a file (facit F9–F22, plan `doc/plans/2026-10-25-facit-rattningar.md`): written back as R12
   from its preserved records like 2000+ — a record that did not change as read, a changed one with only
@@ -228,34 +257,34 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   it needs AutoCAD: `doc/facit/14_annotative.scr`, extra section). A multiline attribute of a scaled or
   rotated INSERT is made before 2018 as one ATTRIB per format run, of an unscaled one per line (the facit,
   `attributes_by_runs()`). A drawing built in memory keeps AutoCAD's R12 form
-- Fonts (rättningsfas R.8, `src/fonts.cpp`): `set_font_paths()`/`font_paths()` (default
+- Fonts (rättningsfas R.8, `src/text/fonts.cpp`): `set_font_paths()`/`font_paths()` (default
   `%WINDIR%\Fonts`) are where SHX/TrueType/OpenType fonts are found, as AutoCAD's support
   path; `TextStyle::font_family`/`font_flags` are the style's XDATA `ACAD` (AutoCAD finds
   the font by family); R12 writes a TrueType style with `txt`, as AutoCAD
-- Text size (R.8 del 2, `src/text_layout.cpp`, `src/mtext_layout.cpp`): TEXT, ATTRIB, ATTDEF,
+- Text size (R.8 del 2, `src/text/text_layout.cpp`, `src/text/mtext_layout.cpp`): TEXT, ATTRIB, ATTDEF,
   SHAPE, MTEXT and TOLERANCE count in `$EXTMIN`/`$EXTMAX` by their box in their fonts, laid
   out as AutoCAD (MTEXT matched exactly to AutoCAD's own output); a font not found is a
   warning and simplex.shx (FONTALT), else the insertion point. `Drawing::entity_extents()`
   and `Drawing::mtext_size()` (42/43, which AutoCAD 2000/2004 do not write) give them to
   programs
-- Dimension blocks (R.7, `src/dimension_block.cpp`): a DIMENSION without a block (or whose
+- Dimension blocks (R.7, `src/graphics/dimension_block.cpp`): a DIMENSION without a block (or whose
   block is gone) gets its `*Dn` built when written, as AutoCAD builds it — matched entity for
   entity to AutoCAD's blocks in ACadSharp's 2000/2004 samples and to ODA File Converter's for
   the rest; 10/11/16/42 as built; built-in arrows as blocks of the file; points on
   `Defpoints`. DIMSTYLE has the 2000+ variables (DIMTFILL … DIMJOGANG; XDATA `ACAD_DSTYLE_*`
   in 2000/2004)
-- ACIS (R.9, `src/acis.cpp`, `src/acis_extents.cpp`): 3DSOLID, REGION and BODY count in
+- ACIS (R.9, `src/geometry/acis.cpp`, `src/geometry/acis_extents.cpp`): 3DSOLID, REGION and BODY count in
   `$EXTMIN`/`$EXTMAX` by their B-rep, exactly — SAT from the 1/3 lines (R13–2010, each
   character but the space as 159 − c), SAB from ACDSDATA (2013+, `AcisData::sab`); edges exact,
   and the interior extremes of sphere, torus, cone (apex) and spline faces inside the face's
   loops. `AcisData` stays as read; HDxf does not create or change ACIS data (2013's SAB of a SAT
   body is made when written)
 - Phase 9 foundation (step 9.0, plan `doc/plans/2026-10-27-fas-9-typer.md`, "Integrationsavtal"): every record type
-  that gets typed data is one codec in `TypedRegistry` (`src/TypedRecordTypes.hpp`, `typed_record.cpp`,
+  that gets typed data is one codec in `TypedRegistry` (`src/records/TypedRecordTypes.hpp`, `typed_record.cpp`,
   `typed_relations.cpp`, `typed_versions.cpp`; families are listed in `typed_families.cpp`): read (`RecordView`,
   `GroupCursor`: repeated subclasses, 102/101 apart, class data 1010-1071 before 1001), write (`RecordWriter`), the CLASSES entry,
   B12 lists, B19 reference descriptors, extents and a `VersionMatrix` (nine versions x two formats; generation, named error and AutoCAD status
-  are separate axes). The register of every inventoried 0-name is `src/typed_registry_data.inc` (generated by
+  are separate axes). The register of every inventoried 0-name is `src/records/typed_registry_data.inc` (generated by
   `tools/gen_type_registry.py`, with `test/data/typed_*.tsv`); `tools/inventory_types.py` counts the corpus; `tools/fas9_facit_run.py` makes
   facit with AutoCAD 2025's core (`doc/facit/fas9_register.md` says what exists). A record a codec cannot read stays untyped, preserved, with a warning
 - Phase 9 (1.9.0, steps 9.0–9.18 and 9.S): what 1.8.1 kept untyped is typed, each type a codec in `TypedRegistry`: tables
@@ -271,7 +300,7 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   facit a branch is "ej testat" (plan, per family; SECTION types in R13/R14 "not established"), never called verified. Checked by
   `tools/fas9_verify_batch.py` (AutoCAD 2025's core + ODA + ezdxf; 3 851 originals, 15 051 outputs); known differences from AutoCAD,
   not fixed: README ("Known differences") and the plan's 9.S outcome
-- Extents (`src/extents.cpp`, `src/acis_extents.cpp`): an invisible entity (60 = 1) does not count, an invisible INSERT with all it
+- Extents (`src/geometry/extents.cpp`, `src/geometry/acis_extents.cpp`): an invisible entity (60 = 1) does not count, an invisible INSERT with all it
   holds, an ATTRIB with 60 or 70 bit 1 and a constant invisible ATTDEF in a block neither; `entity_extents()` answers false for one.
   A drawing read from a file keeps the file's `$EXTMIN`/`$EXTMAX` and calculates nothing while nothing changed. When something did,
   a space with an entity removed gets the drawing's extents, any other the drawing's when they differ from those of the drawing as
@@ -280,7 +309,7 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
   MULTILEADER of a block on the active path ends its branch, what stands beside it stays. Blocks that all insert each other have more
   paths than can be walked: the counts `kCutBoxesComputed`, `kCutWalks`, `kCutLeaders` and `kBlockMetLimit` end such a walk; a file
   AutoCAD can make has no cycle
-- A POLYLINE's VERTEX and SEQEND are written with the layer, linetype and color the polyline gives them (`src/drawing_polyline.cpp`):
+- A POLYLINE's VERTEX and SEQEND are written with the layer, linetype and color the polyline gives them (`src/drawing/drawing_polyline.cpp`):
   read from a file, a value that was the polyline's as read follows it; made by the program, an empty linetype and a ByLayer color
   are the polyline's. The fields hold those values only during a save. From 2000 they have the polyline's 48, 370 and 440; an
   INSERT's SEQEND has its layer, color, 48 and 370
@@ -310,7 +339,7 @@ target_link_libraries(your_target PRIVATE hdxf::hdxf)
 ## Code Conventions
 - Namespace: `hdxf`
 - Header guard: `#pragma once`
-- Single public header: `include/hdxf.hpp`
+- A program includes only `include/hdxf.hpp`; a public type goes in its family's part in `include/hdxf/`
 - Naming: snake_case for functions/variables, PascalCase for types/classes
 - No external dependencies — C++ standard library only
 - No nested structs — use separate `*Types.hpp` files in `src/` when needed

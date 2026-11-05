@@ -61,7 +61,7 @@ out.save_as("new.dxf", hdxf::DxfFormat::Binary);
 include(FetchContent)
 FetchContent_Declare(hdxf
     GIT_REPOSITORY https://github.com/holmbom/HDxf.git
-    GIT_TAG        v1.9.2)   # or another release tag
+    GIT_TAG        v1.9.3)   # or another release tag
 FetchContent_MakeAvailable(hdxf)
 
 target_link_libraries(myapp PRIVATE hdxf::hdxf)   # hdxf::acis for the ACIS body builder
@@ -104,7 +104,7 @@ python -I tools/run_tests.py
 ## Known issues
 
 - **MSVC:** one test fails — `dxf_unicode.dxf` in the material and visual style corpus is not written back as it was
-  read when its records are written from their typed values. GCC (MinGW and Linux) passes. To be fixed in 1.9.2.
+  read when its records are written from their typed values. GCC (MinGW and Linux) passes. Not yet fixed.
 
 ## Documentation
 

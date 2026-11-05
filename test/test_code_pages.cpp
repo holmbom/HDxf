@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "text_encoding.hpp"
+#include "io/text_encoding.hpp"
 #include <string>
 #include <vector>
 

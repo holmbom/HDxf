@@ -1,5 +1,5 @@
 # Generates test/acis_sab_facit.inc: SAT bodies and the SAB 21800 AutoCAD makes of them (plan phase
-# 5, steps 5.6 and 5.7, B63/B66) — the facit of the SAT → SAB encoder (src/acis_sab.cpp) for the
+# 5, steps 5.6 and 5.7, B63/B66) — the facit of the SAT → SAB encoder (src/geometry/acis_sab.cpp) for the
 # spline geometry and the attributes (5.6) and the versions before 21200 (5.7: ACadSharp's 2000 and
 # 2004 bodies, LibreDWG's Surface_2004 and test_acis.cpp's 7.0 bodies against AutoCAD's chain of an
 # HDxf 2010 drawing of them, ezdxf's 3dsolids against ODA's ACAD2013 DXF of the file itself). Only

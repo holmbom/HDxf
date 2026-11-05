@@ -1,4 +1,4 @@
-# Generates the data in src/drawing_r2010.cpp (between the "generated" markers): AutoCAD's
+# Generates the data in src/drawing/drawing_r2010.cpp (between the "generated" markers): AutoCAD's
 # VISUALSTYLE records of a new drawing saved as 2010 — the groups after each record's subclass
 # marker, its XDATA, and the data of the XRECORD in its extension dictionary
 # (ACAD_XREC_ROUNDTRIP) — from jscad's empty2010.dxf (AutoCAD 2017, pinned in

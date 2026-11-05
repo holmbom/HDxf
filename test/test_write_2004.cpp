@@ -1,9 +1,9 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
-#include "text_encoding.hpp"
+#include "io/group_io.hpp"
+#include "io/text_encoding.hpp"
 #include "dxf_structure.hpp"
-#include "dxf_writer.hpp"
+#include "write/dxf_writer.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>

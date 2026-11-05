@@ -2,7 +2,10 @@
 
 ## Att göra
 
-- [ ] **1.9.2 på MSVC och Linux** — bara Windows med MinGW är testat. Kör sviten på båda: `std::from_chars`/`to_chars` för flyttal (`src/number_parse.hpp`, `src/group_io.cpp`), `std::move(oss).str()`, `src/drawing_polyline.cpp` och testen för djupa block. Plan: [doc/plans/2026-11-04-patch-1-9-2-prestanda.md](doc/plans/2026-11-04-patch-1-9-2-prestanda.md), underlag: [doc/research/2026-11-04-prestanda-och-fullstandighet.md](doc/research/2026-11-04-prestanda-och-fullstandighet.md).
+- [ ] **Uppdelningen av `hdxf.hpp` på MSVC och Linux** — bara Windows med MinGW är byggt och testat. `Boxed<T>`, `OptionalBoxed<T>`
+  och `std::vector<T>` har nu typer som bara är deklarerade i de filer som inte behöver dem; det är den riskabla delen på MSVC.
+  Releasebygget på en tagg bygger dem men kör inte sviten; kör den på båda.
+- [ ] **1.9.2 på MSVC och Linux** — bara Windows med MinGW är testat. Kör sviten på båda: `std::from_chars`/`to_chars` för flyttal (`src/io/number_parse.hpp`, `src/io/group_io.cpp`), `std::move(oss).str()`, `src/drawing/drawing_polyline.cpp` och testen för djupa block. Plan: [doc/plans/2026-11-04-patch-1-9-2-prestanda.md](doc/plans/2026-11-04-patch-1-9-2-prestanda.md), underlag: [doc/research/2026-11-04-prestanda-och-fullstandighet.md](doc/research/2026-11-04-prestanda-och-fullstandighet.md).
 - [ ] **Binär sparning av material och visuella stilar** — en ASCII-fil från 2000 … 2013 med MATERIAL eller VISUALSTYLE som sparas binärt öppnas inte av AutoCAD:s kärna (`Unknown object type`): 66 filer i `doc/facit` (`materials*`, `visual_styles*`, `native_records*`). ASCII-utdata öppnas. Filen blir byte-identisk med vad 1.9.1 skriver, så felet är äldre än 1.9.2. Hittat med `tools/fas9_verify_batch.py`.
 - [ ] **1.9.2: MSVC-felet i materialkorpusen** — med MSVC faller
   `mvs_corpus_every_material_and_visual_style_is_typed_and_written_back_as_it_was`: `dxf_unicode.dxf` skrivs inte
@@ -45,7 +48,7 @@ Alla rättade (2026-10-23, före fas 1 steg 1.4) — som AutoCAD skriver R12 (AC
   `r12_blocks_with_no_names.dxf` ger nu 4 block, som facit.
 
 - [x] **`$EXTMIN`/`$EXTMAX`** räknades på blockdefinitionernas entiteter i blockets egna
-  koordinater, och INSERT transformerades inte. Nu (`src/extents.cpp`): modellrymden, en
+  koordinater, och INSERT transformerades inte. Nu (`src/geometry/extents.cpp`): modellrymden, en
   INSERT som blockets extents transformerade av insättningen, en DIMENSION genom sitt block,
   bågar exakt i OCS; `$PEXTMIN`/`$PEXTMAX` för paper space utan viewport id 1; tom ritning
   1E+20/−1E+20 (och standardvyn visar då gränserna). Stämmer med ezdxf:s bbox. Text räknas

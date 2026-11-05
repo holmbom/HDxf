@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "dxf_reader.hpp"
-#include "handles.hpp"
+#include "read/dxf_reader.hpp"
+#include "io/handles.hpp"
 #include <sstream>
 #include <string>
 

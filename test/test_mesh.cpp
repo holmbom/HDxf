@@ -1,9 +1,9 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
+#include "io/group_io.hpp"
 #include "dxf_structure.hpp"
-#include "extents.hpp"
-#include "mesh.hpp"
+#include "geometry/extents.hpp"
+#include "geometry/mesh.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>

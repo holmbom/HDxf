@@ -3,7 +3,7 @@
 // What the hdxf_acis tests share: reading what the builder wrote the way HDxf reads it, bodies to
 // build and break, and the AutoCAD facit.
 
-#include "acis.hpp"
+#include "geometry/acis.hpp"
 #include "hdxf.hpp"
 #include "hdxf_acis.hpp"
 #include "test_framework.hpp"

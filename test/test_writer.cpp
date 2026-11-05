@@ -1,6 +1,6 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "dxf_writer.hpp"
+#include "write/dxf_writer.hpp"
 #include <sstream>
 #include <fstream>
 

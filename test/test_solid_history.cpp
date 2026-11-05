@@ -2,7 +2,7 @@
 #include "assoc_test_support.hpp"
 #include "type_version_matrix.hpp"
 #include "typed_corpus.hpp"
-#include "TypedRecordTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
 #include "hdxf.hpp"
 #include <algorithm>
 #include <array>

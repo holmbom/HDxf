@@ -200,7 +200,7 @@ add_executable(hdxf_tests
 
 target_link_libraries(hdxf_tests PRIVATE hdxf::hdxf)
 
-# Line tables only in the tests: ObjectData's std::variant (include/hdxf.hpp, some 200 alternatives) gives each file
+# Line tables only in the tests: ObjectData's std::variant (include/hdxf/object.hpp, some 200 alternatives) gives each file
 # that uses an Object 10-25 MB of type information, and with the library's the executable's image passes the 2 GB
 # Windows loads ("Exec format error")
 target_compile_options(hdxf_tests PRIVATE $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:GNU>>:-g1>)

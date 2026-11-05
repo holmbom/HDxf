@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "dimension_block.hpp"
-#include "text_layout.hpp"
+#include "graphics/dimension_block.hpp"
+#include "text/text_layout.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>

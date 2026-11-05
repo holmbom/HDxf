@@ -70,7 +70,7 @@ VERSION_NAME = {"AC1009": "R12", "AC1012": "R13", "AC1014": "R14", "AC1015": "20
 
 def registry_rows():
     rows = {}
-    path = os.path.join(inv.ROOT, "src", "typed_registry_data.inc")
+    path = os.path.join(inv.ROOT, "src", "records", "typed_registry_data.inc")
     with open(path, encoding="utf-8") as f:
         for line in f:
             import re

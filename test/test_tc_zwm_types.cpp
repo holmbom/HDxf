@@ -2,8 +2,8 @@
 #include "type_version_matrix.hpp"
 #include "hdxf.hpp"
 #include "typed_corpus.hpp"
-#include "TypedRecordTypes.hpp"
-#include "proxy_graphics.hpp"
+#include "records/TypedRecordTypes.hpp"
+#include "graphics/proxy_graphics.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

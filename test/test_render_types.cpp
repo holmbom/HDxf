@@ -3,8 +3,8 @@
 #include "typed_corpus.hpp"
 #include "dxf_structure.hpp"
 #include "hdxf.hpp"
-#include "TypedRecordTypes.hpp"
-#include "RenderTypes.hpp"
+#include "records/TypedRecordTypes.hpp"
+#include "records/RenderTypes.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>

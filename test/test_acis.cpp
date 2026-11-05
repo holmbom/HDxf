@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "acis.hpp"
-#include "extents.hpp"
+#include "geometry/acis.hpp"
+#include "geometry/extents.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>

@@ -1,8 +1,8 @@
 #include "test_framework.hpp"
 #include "dxf_structure.hpp"
 #include "hdxf.hpp"
-#include "dimension_block.hpp"
-#include "group_io.hpp"
+#include "graphics/dimension_block.hpp"
+#include "io/group_io.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>

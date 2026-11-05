@@ -1,9 +1,9 @@
 #pragma once
 
 #include "test_framework.hpp"
-#include "dimension_block.hpp"
-#include "handles.hpp"
-#include "group_io.hpp"
+#include "graphics/dimension_block.hpp"
+#include "io/handles.hpp"
+#include "io/group_io.hpp"
 #include "hdxf.hpp"
 #include <algorithm>
 #include <cctype>

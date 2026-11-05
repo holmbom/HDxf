@@ -1,9 +1,9 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "acis.hpp"
-#include "acis_sab.hpp"
-#include "extents.hpp"
-#include "group_io.hpp"
+#include "geometry/acis.hpp"
+#include "geometry/acis_sab.hpp"
+#include "geometry/extents.hpp"
+#include "io/group_io.hpp"
 #include "dxf_structure.hpp"
 #include <algorithm>
 #include <cctype>

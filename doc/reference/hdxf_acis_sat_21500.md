@@ -5,7 +5,7 @@ AutoCAD 2025's own files (`doc/facit/acad_2010_dxf_solids.dxf` and its siblings,
 `doc/facit/10_solids.scr`: 21 bodies in SAT 21500, the same bodies as SAB 22300 in the 2018 file),
 what AutoCAD's core (DWG TrueView 2027, `accoreconsole`) measures of the files the builder wrote
 (MASSPROP and AREA, `libs/hdxf_acis/tools/acad_measure.py`), and HDxf's own SAT reader and SAT→SAB
-encoder (`src/acis.cpp`, `src/acis_sab.cpp`), which AutoCAD's files already passed. No file the
+encoder (`src/geometry/acis.cpp`, `src/geometry/acis_sab.cpp`), which AutoCAD's files already passed. No file the
 builder wrote is a facit, and no code of another library was used.
 
 Read a body with `hdxf_acis_inspect_sat <file.dxf|file.sat> [n]`.
@@ -58,7 +58,7 @@ by AutoCAD's core in every case below.
 | `vertex` | an edge, 0 or 1, point |
 | `point` | x y z |
 
-The field order is HDxf's encoder's field list (`src/acis_sab.cpp`) and was checked against the
+The field order is HDxf's encoder's field list (`src/geometry/acis_sab.cpp`) and was checked against the
 facit; the hand reading in the plan's examples (`face $10 -1 $-1 $11 $12 $4 $-1 $13 reversed single`
 …) is the same layout. A 21500 coedge has no integer after the loop (that is 21800's).
 

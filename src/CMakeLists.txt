@@ -1,164 +1,143 @@
 add_library(hdxf
-    hdxf.cpp
-    object_data.cpp
-    drawing.cpp
-    dxf_writer.cpp
-    dxf_reader.cpp
-    group_io.cpp
-    raw_record.cpp
-    object_reader.cpp
-    dxf_writer_2000.cpp
-    dxf_writer_acds.cpp
-    acds.cpp
-    dxf_writer_template.cpp
-    template_2000.cpp
-    extents.cpp
-    acis.cpp
-    acis_extents.cpp
-    acis_sab.cpp
-    drawing_r2000.cpp
-    drawing_r13_r14.cpp
-    drawing_r2007.cpp
-    drawing_r2010.cpp
-    drawing_r2013.cpp
-    mleader.cpp
-    drawing_mleader.cpp
-    drawing_roundtrip.cpp
-    dxf_writer_mleader.cpp
-    dxf_writer_surface.cpp
-    dxf_writer_mesh.cpp
-    dxf_writer_geodata.cpp
-    mesh.cpp
-    mleader_graphics.cpp
-    proxy_graphics.cpp
-    text_encoding.cpp
-    code_pages.cpp
-    ecs.cpp
-    aci_palette.cpp
-    fonts.cpp
-    text_layout.cpp
-    mtext_layout.cpp
-    mtext_data.cpp
-    drawing_mtext.cpp
-    drawing_attribute.cpp
-    drawing_polyline.cpp
-    drawing_object_fields.cpp
-    attribute_mirror.cpp
-    dimension_block.cpp
-    dimstyle_legacy.cpp
-    dxf_writer_dimstyle.cpp
-    dxf_writer_older_tables.cpp
-    older_checks.cpp
-    older_tables.cpp
-    classes_older.cpp
+    # The data variants' copying, moving and destruction, and the ACI palette
+    core/aci_palette.cpp
+    core/entity_data.cpp
+    core/hdxf.cpp
+    core/object_data.cpp
 
-    # Phase 9 (plan 2026-10-27-fas-9-typer.md): the foundation (9.0), then one block per family step. A family adds
-    # its source files below its own marker and touches no other block.
-    typed_record.cpp
-    typed_relations.cpp
-    typed_versions.cpp
-    typed_families.cpp
+    # Group codes, text encoding and the ACDSDATA section
+    io/acds.cpp
+    io/code_pages.cpp
+    io/group_io.cpp
+    io/raw_record.cpp
+    io/text_encoding.cpp
 
-    # 9.1 tables
-    table_value.cpp
-    table_format.cpp
-    table_content.cpp
-    table_geometry.cpp
-    table_sync.cpp
-    dxf_writer_table.cpp
+    # Reader
+    read/dxf_reader.cpp
+    read/object_reader.cpp
 
-    # 9.2 existing types and fields
-    records_existing.cpp
-    dxf_writer_existing.cpp
+    # Writer
+    write/classes_older.cpp
+    write/dimstyle_legacy.cpp
+    write/dxf_writer.cpp
+    write/dxf_writer_2000.cpp
+    write/dxf_writer_acds.cpp
+    write/dxf_writer_context_dimension.cpp
+    write/dxf_writer_dimstyle.cpp
+    write/dxf_writer_document_data.cpp
+    write/dxf_writer_dynamic_types.cpp
+    write/dxf_writer_existing.cpp
+    write/dxf_writer_extension_types.cpp
+    write/dxf_writer_geodata.cpp
+    write/dxf_writer_graph_block.cpp
+    write/dxf_writer_history.cpp
+    write/dxf_writer_mesh.cpp
+    write/dxf_writer_mleader.cpp
+    write/dxf_writer_older_tables.cpp
+    write/dxf_writer_order_index.cpp
+    write/dxf_writer_proxy.cpp
+    write/dxf_writer_render.cpp
+    write/dxf_writer_styles.cpp
+    write/dxf_writer_surface.cpp
+    write/dxf_writer_table.cpp
+    write/dxf_writer_template.cpp
+    write/older_tables.cpp
+    write/template_2000.cpp
 
-    # 9.3 OLE and proxy classes
-    ole.cpp
-    proxy_record.cpp
-    proxy_record_graphics.cpp
-    dxf_writer_proxy.cpp
+    # Drawing and its version specifics
+    drawing/attribute_mirror.cpp
+    drawing/drawing.cpp
+    drawing/drawing_attribute.cpp
+    drawing/drawing_mleader.cpp
+    drawing/drawing_mtext.cpp
+    drawing/drawing_object_fields.cpp
+    drawing/drawing_polyline.cpp
+    drawing/drawing_r13_r14.cpp
+    drawing/drawing_r2000.cpp
+    drawing/drawing_r2007.cpp
+    drawing/drawing_r2010.cpp
+    drawing/drawing_r2013.cpp
+    drawing/drawing_roundtrip.cpp
+    drawing/mleader.cpp
+    drawing/older_checks.cpp
+    drawing/table_sync.cpp
 
-    # 9.4 draw order, clipping and indexes
-    objects_order_index.cpp
-    dxf_writer_order_index.cpp
+    # Record types: one codec per type in TypedRegistry
+    records/assoc_action.cpp
+    records/assoc_body.cpp
+    records/assoc_constraints.cpp
+    records/assoc_dependency.cpp
+    records/assoc_dimensions_arrays.cpp
+    records/assoc_extended.cpp
+    records/assoc_extended_params.cpp
+    records/assoc_geometry.cpp
+    records/assoc_history.cpp
+    records/assoc_param.cpp
+    records/assoc_perssubent.cpp
+    records/assoc_removal.cpp
+    records/assoc_surface_ops.cpp
+    records/coordination_model.cpp
+    records/data_table.cpp
+    records/dimassoc.cpp
+    records/dimension_special.cpp
+    records/dynamic_block_actions.cpp
+    records/dynamic_block_base.cpp
+    records/dynamic_block_constraints.cpp
+    records/dynamic_block_parameters.cpp
+    records/evaluation_graph.cpp
+    records/field.cpp
+    records/map_objects.cpp
+    records/material.cpp
+    records/modeldoc_style.cpp
+    records/object_context.cpp
+    records/objects_document_data.cpp
+    records/objects_order_index.cpp
+    records/objects_render.cpp
+    records/objects_style_defaults.cpp
+    records/ole.cpp
+    records/proxy_record.cpp
+    records/records_existing.cpp
+    records/section.cpp
+    records/solid_history.cpp
+    records/sun_study.cpp
+    records/table_content.cpp
+    records/table_format.cpp
+    records/table_geometry.cpp
+    records/table_layout.cpp
+    records/table_value.cpp
+    records/tc_records.cpp
+    records/typed_families.cpp
+    records/typed_record.cpp
+    records/typed_relations.cpp
+    records/typed_versions.cpp
+    records/underlay.cpp
+    records/visual_style.cpp
+    records/zwm_records.cpp
 
-    # 9.5 table layout
-    table_layout.cpp
-    table_graphics.cpp
+    # Extents, ACIS, mesh and surfaces
+    geometry/acis.cpp
+    geometry/acis_extents.cpp
+    geometry/acis_isolines.cpp
+    geometry/acis_sab.cpp
+    geometry/ecs.cpp
+    geometry/extents.cpp
+    geometry/mesh.cpp
+    geometry/nurbs_surface.cpp
 
-    # 9.6 underlays, coordination model, xref panels
-    underlay.cpp
-    coordination_model.cpp
+    # Proxy graphics and dimension blocks
+    graphics/dimension_block.cpp
+    graphics/mleader_graphics.cpp
+    graphics/proxy_graphics.cpp
+    graphics/proxy_record_graphics.cpp
+    graphics/section_graphics.cpp
+    graphics/surface_graphics.cpp
+    graphics/table_graphics.cpp
 
-    # 9.7 materials and visual styles
-    material.cpp
-    visual_style.cpp
-    objects_style_defaults.cpp
-    dxf_writer_styles.cpp
-
-    # 9.8 fields and document data
-    field.cpp
-    data_table.cpp
-    objects_document_data.cpp
-    dxf_writer_document_data.cpp
-
-    # 9.9 evaluation graph and dynamic block bases
-    evaluation_graph.cpp
-    dynamic_block_base.cpp
-    dxf_writer_graph_block.cpp
-
-    # 9.10 associative bases and persistent subentities
-    assoc_action.cpp
-    assoc_dependency.cpp
-    assoc_perssubent.cpp
-    assoc_param.cpp
-    assoc_geometry.cpp
-    assoc_body.cpp
-
-    # 9.11 render, lights and sun
-    objects_render.cpp
-    sun_study.cpp
-    dxf_writer_render.cpp
-
-    # 9.12 sections and ModelDoc styles
-    section.cpp
-    section_graphics.cpp
-    modeldoc_style.cpp
-
-    # 9.13 dynamic blocks
-    dynamic_block_parameters.cpp
-    dynamic_block_actions.cpp
-    dynamic_block_constraints.cpp
-    dxf_writer_dynamic_types.cpp
-
-    # 9.14 solid history
-    solid_history.cpp
-    dxf_writer_history.cpp
-
-    # 9.15 other associative classes
-    assoc_constraints.cpp
-    assoc_extended_params.cpp
-    assoc_surface_ops.cpp
-    assoc_dimensions_arrays.cpp
-    assoc_removal.cpp
-    assoc_history.cpp
-    assoc_extended.cpp
-
-    # 9.16 NURBSURFACE and isolines
-    acis_isolines.cpp
-    surface_graphics.cpp
-    nurbs_surface.cpp
-
-    # 9.17 annotation contexts, DIMASSOC, special dimensions
-    object_context.cpp
-    dimassoc.cpp
-    dimension_special.cpp
-    dxf_writer_context_dimension.cpp
-
-    # 9.18 Map, TC and ZWM
-    map_objects.cpp
-    tc_records.cpp
-    zwm_records.cpp
-    dxf_writer_extension_types.cpp
+    # Fonts and text layout
+    text/fonts.cpp
+    text/mtext_data.cpp
+    text/mtext_layout.cpp
+    text/text_layout.cpp
 )
 
 add_library(hdxf::hdxf ALIAS hdxf)
@@ -167,14 +146,16 @@ target_include_directories(hdxf
     PUBLIC
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_compile_features(hdxf PUBLIC cxx_std_20)
 
-# ObjectData's copy, move and destruction (include/hdxf.hpp) are optimized and without debug information in every
-# build: otherwise libstdc++'s nested helpers for the some 200 alternatives are written out, each with a name of the
-# whole list (a file of gigabytes)
-set_source_files_properties(object_data.cpp PROPERTIES COMPILE_OPTIONS
+# The copying, moving and destruction of ObjectData and EntityData (include/hdxf/object.hpp, entity.hpp) are optimized and
+# without debug information in every build: otherwise libstdc++'s nested helpers for each alternative are written out, each
+# with a name of the whole list (a file of gigabytes)
+set_source_files_properties(core/object_data.cpp core/entity_data.cpp PROPERTIES COMPILE_OPTIONS
     "$<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>:-O2;-g0>")
 
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)

@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "acis.hpp"
-#include "group_io.hpp"
+#include "geometry/acis.hpp"
+#include "io/group_io.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>

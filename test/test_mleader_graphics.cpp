@@ -1,10 +1,10 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
+#include "io/group_io.hpp"
 #include "dxf_structure.hpp"
-#include "extents.hpp"
-#include "mleader_graphics.hpp"
-#include "text_layout.hpp"
+#include "geometry/extents.hpp"
+#include "graphics/mleader_graphics.hpp"
+#include "text/text_layout.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>

@@ -1,10 +1,10 @@
 #include "test_framework.hpp"
 #include "assoc_test_support.hpp"
 #include "type_version_matrix.hpp"
-#include "TypedRecordTypes.hpp"
-#include "dimension_block.hpp"
-#include "extents.hpp"
-#include "text_layout.hpp"
+#include "records/TypedRecordTypes.hpp"
+#include "graphics/dimension_block.hpp"
+#include "geometry/extents.hpp"
+#include "text/text_layout.hpp"
 #include "hdxf.hpp"
 #include <algorithm>
 #include <cmath>

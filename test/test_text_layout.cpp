@@ -1,7 +1,7 @@
 #include "test_framework.hpp"
 #include "hdxf.hpp"
-#include "text_encoding.hpp"
-#include "text_layout.hpp"
+#include "io/text_encoding.hpp"
+#include "text/text_layout.hpp"
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>

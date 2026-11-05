@@ -1,10 +1,10 @@
 #include "test_framework.hpp"
 #include "typed_corpus.hpp"
 #include "hdxf.hpp"
-#include "acis.hpp"
-#include "acis_isolines.hpp"
-#include "proxy_graphics.hpp"
-#include "surface_graphics.hpp"
+#include "geometry/acis.hpp"
+#include "geometry/acis_isolines.hpp"
+#include "graphics/proxy_graphics.hpp"
+#include "graphics/surface_graphics.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -20,7 +20,7 @@
 // planes, extruded, revolved and swept surfaces, lofts and NURBS, trims, partial faces, moves and rotations) and the older
 // doc/facit/acad_2000_dxf_surfaces.dxf, acad_2004_dxf_surfaces.dxf; fas9_surfaces_view.scr (views and VIEWRES),
 // fas9_surfaces_iso.scr and fas9_surfaces_iso2.scr (lofts, NURBS, an offset, a network). They are local files (the facit is not
-// in git): a test whose file is missing is skipped. The generator (src/acis_isolines.cpp) is compared command by command with
+// in git): a test whose file is missing is skipped. The generator (src/geometry/acis_isolines.cpp) is compared command by command with
 // the stream AutoCAD saved — markers, colors, fills, lines, circles, arcs, ellipses and polylines with the parameters of their
 // points — for every surface it draws; the surfaces it does not draw (a loft straight between more than two sections, a loft of
 // closed sections, a sweep, a generic SURFACE, a sphere cut off its pole axis: what AutoCAD draws of those is not what the body

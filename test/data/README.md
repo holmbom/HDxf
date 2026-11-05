@@ -90,7 +90,7 @@ value (attribute tag `MULTI_LINE_ATT`).
 phase 3, B34) — MATERIAL `ByBlock`, `ByLayer`, `Global` and 26 VISUALSTYLE, each with an
 extension dictionary holding an XRECORD `ACAD_XREC_ROUNDTRIP`; `$CMATERIAL` → `ByLayer`,
 `$INTERFEREOBJVS` → `Realistic`, `$INTERFEREVPVS` → `Wireframe`, every layer's `347` →
-`Global`, VPORT/VIEWPORT `348` → `2dWireframe`. `src/drawing_r2007.cpp` has these records
+`Global`, VPORT/VIEWPORT `348` → `2dWireframe`. `src/drawing/drawing_r2007.cpp` has these records
 (`tools/gen_objects_2007.py`), `test/test_write_2007.cpp` compares them.
 
 #### jscad — AutoCAD 2017's new drawing as 2010
@@ -99,7 +99,7 @@ extension dictionary holding an XRECORD `ACAD_XREC_ROUNDTRIP`; `$CMATERIAL` → 
 phase 4, B45) — the same as in `empty2007.dxf` but the 26 VISUALSTYLE in 2010's form (`177`, `291`
 first, every property followed by `176 1`) and their round-trip XRECORDs without 2007's
 `RTVSPropertyOp…`; no APPID `ACAD_MLEADERVER`; MLEADERSTYLE `Standard` with `179 2` and
-`271`–`273`. `src/drawing_r2010.cpp` has the visual styles (`tools/gen_visual_styles_2010.py`),
+`271`–`273`. `src/drawing/drawing_r2010.cpp` has the visual styles (`tools/gen_visual_styles_2010.py`),
 `test/test_write_2010.cpp` compares them.
 
 #### DXF 2010 (phase 4)
@@ -117,7 +117,7 @@ phase 5, B59) — the same as in `empty2010.dxf` but the 26 VISUALSTYLE in 2013'
 round-trip XRECORD; MLEADERSTYLE `Standard` without extension dictionary, `295 1`, `298 1`; every
 LAYER `348 0`; the VPORT table's XDATA `ACAD` `DbSaveVer` `26`; no `AcDsDecomposeData`; ACDSDATA
 with `AcDb_Thumbnail_Schema`, the four system schemas and one record (Model's PNG, 1113 bytes);
-`$REQUIREDVERSIONS 160 0` after `$LASTSAVEDBY`. `src/drawing_r2013.cpp` has the visual styles
+`$REQUIREDVERSIONS 160 0` after `$LASTSAVEDBY`. `src/drawing/drawing_r2013.cpp` has the visual styles
 (`tools/gen_visual_styles_2013.py`), `test/test_write_2013.cpp` compares them.
 
 #### DXF 2013 (phase 5)
@@ -277,7 +277,7 @@ BLOCK_RECORDs, owner handles (330) and a root dictionary with `ACAD_GROUP` in OB
 ## Type register (phase 9)
 
 `typed_types.tsv` and `typed_forms.tsv` are made by `tools/gen_type_registry.py` from the old phase 9 plan's appendices A-C
-(`doc/plans/2026-10-25-fas-9-typer.md`) and the reader's dispatch, together with `src/typed_registry_data.inc`
+(`doc/plans/2026-10-25-fas-9-typer.md`) and the reader's dispatch, together with `src/records/typed_registry_data.inc`
 (`python -I tools/gen_type_registry.py --check` says whether they are current; it is a ctest). `typed_types.tsv`: every 0-record
 name of the inventory with its kind, status at the inventory, owning step and sample counts per version; `typed_forms.tsv`: the 362 observed
 group orders of the untyped types with their sample file, handle and SHA256. They are observations, not facit: only a file AutoCAD

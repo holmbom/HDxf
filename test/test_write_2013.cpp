@@ -1,8 +1,8 @@
 #include "test_framework.hpp"
 #include "test_drawing_builder.hpp"
 #include "hdxf.hpp"
-#include "group_io.hpp"
-#include "text_encoding.hpp"
+#include "io/group_io.hpp"
+#include "io/text_encoding.hpp"
 #include "dxf_structure.hpp"
 #include <algorithm>
 #include <cmath>
@@ -748,7 +748,7 @@ TEST(write_2013_fields) {
     hdxf_test::assert_true(section(after, "ACDSDATA") == section(before, "ACDSDATA"), "its SAB");
 }
 
-// A body whose SAT the encoder cannot make SAB (src/acis_sab.cpp, B62/B63): an error naming the
+// A body whose SAT the encoder cannot make SAB (src/geometry/acis_sab.cpp, B62/B63): an error naming the
 // body, before anything is changed — data that is not SAT, a version of steps 5.6/5.7 ("yet")
 TEST(write_2013_sat_refused) {
     hdxf::AcisData sat;
